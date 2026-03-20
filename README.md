@@ -4,6 +4,19 @@
 
 > Claude Code, ChatGPT CLI와 통합된 AI 터미널 + 태스크 관리를 하나의 앱에서.
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/71a3133a-822a-461e-a11e-bf201f9921d2" alt="AI 터미널 + 태스크 패널" width="720" />
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/9a0719d5-80b6-46e3-ac8a-4df7c162ab97" alt="세션 시작 모달" width="350" />
+  <img src="https://github.com/user-attachments/assets/a9970e48-271c-4ad7-bf2d-0b3852d522e8" alt="2-Pane 분할" width="350" />
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/fb53af34-17d1-4459-91f2-781785fd8115" alt="3-Pane 분할 (Claude + Claude + Shell)" width="720" />
+</p>
+
 ---
 
 ## 주요 기능
