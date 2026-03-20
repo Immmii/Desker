@@ -1,0 +1,9 @@
+{
+  "name": "desker-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^11.7.0"
+  }
+}

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Desker — 개발 화면</title>
+  <script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #f0f0f2; font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 40px; color: #1d1d1f; }
+
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 48px; text-align: center; }
+
+    .page-section { margin-bottom: 64px; }
+    .page-header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 4px;
+    }
+    .page-title { font-size: 18px; font-weight: 700; }
+    .page-desc { font-size: 13px; color: #86868b; }
+    .divider { height: 3px; background: #00d2d3; border-radius: 2px; margin-bottom: 24px; }
+
+    .page-card {
+      background: #808080; border-radius: 16px; padding: 32px; margin-bottom: 16px;
+    }
+
+    /* Screen mockup */
+    .screen {
+      background: #0f0f13; border-radius: 12px; overflow: hidden; border: 1px solid #2e2e42;
+      display: flex; height: 420px;
+    }
+
+    /* Sidebar */
+    .mock-sidebar {
+      width: 68px; background: #1a1a24; border-right: 1px solid #2e2e42;
+      display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; flex-shrink: 0;
+    }
+    .mock-sidebar-item {
+      display: flex; flex-direction: column; align-items: center; padding: 8px 0; width: 56px; position: relative;
+    }
+    .mock-sidebar-item.active::before {
+      content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 20px; background: #6c5ce7; border-radius: 0 2px 2px 0;
+    }
+    .mock-icon {
+      width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      color: #9090a8; font-size: 14px;
+    }
+    .mock-sidebar-item.active .mock-icon { background: #6c5ce7; color: white; }
+    .mock-label { font-size: 8px; color: #9090a8; margin-top: 2px; }
+    .mock-sidebar-item.active .mock-label { color: #e8e8f0; }
+
+    /* Project panel */
+    .mock-panel {
+      width: 200px; background: rgba(26,26,36,0.5); border-right: 1px solid #2e2e42;
+      padding: 16px 12px; flex-shrink: 0;
+    }
+    .mock-panel-title { font-size: 14px; font-weight: 700; color: #e8e8f0; margin-bottom: 4px; }
+    .mock-panel-sub { font-size: 12px; color: #9090a8; margin-bottom: 16px; }
+    .mock-panel-section { font-size: 10px; color: rgba(144,144,168,0.5); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding: 0 8px; }
+    .mock-panel-item {
+      font-size: 13px; color: #9090a8; padding: 6px 10px; border-radius: 6px; margin-bottom: 2px;
+    }
+    .mock-panel-item.active { background: rgba(108,92,231,0.12); color: #6c5ce7; font-weight: 500; }
+
+    /* Content area */
+    .mock-content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .mock-content-header {
+      padding: 12px 20px; border-bottom: 1px solid #2e2e42;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .mock-content-title { font-size: 16px; font-weight: 700; color: #e8e8f0; }
+    .mock-content-meta { font-size: 12px; color: #9090a8; }
+    .mock-content-body { flex: 1; padding: 16px 20px; overflow: hidden; }
+
+    /* Task rows */
+    .mock-task {
+      display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+      border-bottom: 1px solid rgba(46,46,66,0.3); color: #e8e8f0; font-size: 14px;
+    }
+    .mock-checkbox { width: 16px; height: 16px; border: 2px solid #9090a8; border-radius: 50%; flex-shrink: 0; }
+    .mock-checkbox.done { border-color: #00b894; background: rgba(0,184,148,0.2); }
+    .mock-badge { font-size: 11px; color: #9090a8; background: rgba(36,36,52,0.6); padding: 2px 8px; border-radius: 4px; }
+    .mock-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+    .mock-status.todo { color: #9090a8; background: rgba(36,36,52,0.4); }
+    .mock-status.progress { color: #74b9ff; background: rgba(116,185,255,0.1); }
+
+    /* HomeOffice area */
+    .mock-office {
+      background: #0f0f13; border-bottom: 1px solid #2e2e42;
+      height: 160px; display: flex; align-items: center; justify-content: center;
+      position: relative;
+    }
+    .mock-room {
+      width: 280px; height: 120px; border-radius: 4px; overflow: hidden;
+    }
+    .mock-wall { height: 40px; background: #b86f50; }
+    .mock-floor { height: 80px; background: repeating-conic-gradient(#ead4aa 0% 25%, #c8b890 0% 50%) 0 0 / 16px 16px; }
+    .mock-office-label { position: absolute; top: 8px; left: 12px; font-size: 10px; color: rgba(144,144,168,0.5); }
+
+    /* Terminal */
+    .mock-terminal {
+      background: #0f0f13; flex: 1; padding: 16px; font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: #e8e8f0;
+      line-height: 1.6;
+    }
+    .term-purple { color: #6c5ce7; }
+    .term-green { color: #00b894; }
+    .term-gray { color: #9090a8; }
+    .term-cyan { color: #55efc4; }
+
+    /* Dot editor */
+    .mock-editor-area { display: flex; gap: 16px; padding: 16px; flex: 1; }
+    .mock-tools { width: 140px; flex-shrink: 0; }
+    .mock-tool-group { margin-bottom: 12px; }
+    .mock-tool-label { font-size: 10px; color: #9090a8; margin-bottom: 6px; }
+    .mock-tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .mock-tool-btn { background: #1a1a24; color: #9090a8; font-size: 10px; padding: 4px 6px; border-radius: 4px; text-align: center; }
+    .mock-tool-btn.active { background: rgba(108,92,231,0.2); color: #6c5ce7; }
+    .mock-canvas-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+    }
+    .mock-pixel-grid {
+      width: 200px; height: 200px; background: #1a1a24; border: 1px solid #2e2e42; border-radius: 8px;
+      display: grid; grid-template-columns: repeat(16, 1fr); grid-template-rows: repeat(16, 1fr);
+    }
+    .mock-pixel { border: 0.5px solid rgba(255,255,255,0.03); }
+    .mock-pixel.filled { background: #6c5ce7; }
+
+    /* Plugin cards */
+    .mock-plugin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .mock-plugin-card {
+      display: flex; align-items: center; gap: 10px; padding: 14px;
+      background: #1a1a24; border: 1px solid #2e2e42; border-radius: 10px;
+    }
+    .mock-plugin-icon { font-size: 20px; }
+    .mock-plugin-info { flex: 1; }
+    .mock-plugin-name { font-size: 13px; font-weight: 500; color: #e8e8f0; }
+    .mock-plugin-desc { font-size: 11px; color: #9090a8; }
+    .mock-plugin-btn { font-size: 11px; padding: 4px 12px; border-radius: 6px; background: #242434; color: #9090a8; }
+    .mock-plugin-btn.connected { background: rgba(0,184,148,0.12); color: #00b894; }
+
+    /* Component annotations */
+    .components { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+    .comp-tag {
+      font-size: 11px; padding: 6px 14px; border-radius: 8px;
+      background: white; color: #1d1d1f; border: 1px solid #e5e5ea;
+      font-weight: 500;
+    }
+    .comp-tag.pink { background: #ff69b4; color: white; border-color: #ff69b4; }
+  </style>
+</head>
+<body>
+
+<h1>Desker — 개발 화면</h1>
+
+<!-- ═══════════ PAGE 1: 홈 (Workspace) ═══════════ -->
+<div class="page-section">
+  <div class="page-header">
+    <div class="page-title">1. 홈 (Workspace)</div>
+    <div class="page-desc">HomeOffice 시각화 + Task Tracker 통합 메인 화면</div>
+  </div>
+  <div class="divider"></div>
+  <div class="page-card">
+    <div class="screen">
+      <div class="mock-sidebar">
+        <div class="mock-sidebar-item active"><div class="mock-icon">🏠</div><div class="mock-label">홈</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">✏️</div><div class="mock-label">에디터</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">📋</div><div class="mock-label">태스크</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">💻</div><div class="mock-label">터미널</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">🔌</div><div class="mock-label">플러그인</div></div>
+      </div>
+      <div class="mock-panel">
+        <div class="mock-panel-title">Desker</div>
+        <div class="mock-panel-sub">Task Tracker</div>
+        <div class="mock-panel-section">프로젝트</div>
+        <div class="mock-panel-item active">📁 전체 태스크</div>
+        <div class="mock-panel-item">🎓 대학교</div>
+        <div class="mock-panel-item">💻 코딩 프로젝트</div>
+        <div class="mock-panel-item">📔 일기장</div>
+      </div>
+      <div class="mock-content" style="flex-direction:column;">
+        <div class="mock-office">
+          <div class="mock-office-label">HomeOffice</div>
+          <div class="mock-room">
+            <div class="mock-wall"></div>
+            <div class="mock-floor"></div>
+          </div>
+        </div>
+        <div class="mock-content-header">
+          <div class="mock-content-title">📋 전체 태스크</div>
+          <div class="mock-content-meta">할 일 1 · 진행 중 2 · 완료 0</div>
+        </div>
+        <div style="flex:1;overflow:hidden;">
+          <div class="mock-task"><div class="mock-checkbox"></div>종합설계 과제 제출<span style="flex:1"></span><div class="mock-badge">🎓 대학교</div><div class="mock-status todo">할 일</div></div>
+          <div class="mock-task"><div class="mock-checkbox"></div>운영체제 복습<span style="flex:1"></span><div class="mock-badge">🎓 대학교</div><div class="mock-status progress">진행 중</div></div>
+          <div class="mock-task"><div class="mock-checkbox"></div>Desker MVP 구현<span style="flex:1"></span><div class="mock-badge">💻 코딩 프로젝트</div><div class="mock-status progress">진행 중</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="components">
+      <div class="comp-tag">Sidebar</div>
+      <div class="comp-tag">ProjectPanel</div>
+      <div class="comp-tag pink">HomeOfficeCanvas</div>
+      <div class="comp-tag">TaskDashboard</div>
+      <div class="comp-tag">TaskRow</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE 2: 도트 에디터 ═══════════ -->
+<div class="page-section">
+  <div class="page-header">
+    <div class="page-title">2. 도트 에디터</div>
+    <div class="page-desc">픽셀아트 직접 제작 · Export/Import · 스토어 공유</div>
+  </div>
+  <div class="divider"></div>
+  <div class="page-card">
+    <div class="screen">
+      <div class="mock-sidebar">
+        <div class="mock-sidebar-item"><div class="mock-icon">🏠</div><div class="mock-label">홈</div></div>
+        <div class="mock-sidebar-item active"><div class="mock-icon">✏️</div><div class="mock-label">에디터</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">📋</div><div class="mock-label">태스크</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">💻</div><div class="mock-label">터미널</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">🔌</div><div class="mock-label">플러그인</div></div>
+      </div>
+      <div class="mock-content">
+        <div class="mock-content-header">
+          <div class="mock-content-title">✏️ 도트 에디터</div>
+        </div>
+        <div class="mock-editor-area">
+          <div class="mock-tools">
+            <div class="mock-tool-group">
+              <div class="mock-tool-label">도구</div>
+              <div class="mock-tool-grid">
+                <div class="mock-tool-btn active">✏️ 연필</div>
+                <div class="mock-tool-btn">🧽 지우개</div>
+                <div class="mock-tool-btn">🪣 채우기</div>
+                <div class="mock-tool-btn">💧 스포이드</div>
+              </div>
+            </div>
+            <div class="mock-tool-group">
+              <div class="mock-tool-label">캔버스 크기</div>
+              <div class="mock-tool-grid">
+                <div class="mock-tool-btn">8</div>
+                <div class="mock-tool-btn active">16</div>
+                <div class="mock-tool-btn">32</div>
+                <div class="mock-tool-btn">64</div>
+              </div>
+            </div>
+            <div class="mock-tool-group">
+              <div class="mock-tool-label">팔레트</div>
+              <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                <div style="width:16px;height:16px;border-radius:3px;background:#6c5ce7;border:2px solid white;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#e17055;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#00b894;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#fdcb6e;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#74b9ff;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#000000;"></div>
+                <div style="width:16px;height:16px;border-radius:3px;background:#ffffff;border:1px solid #2e2e42;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mock-canvas-area">
+            <div class="mock-pixel-grid">
+              <div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel"></div>
+              <div class="mock-pixel"></div><div class="mock-pixel"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel filled"></div><div class="mock-pixel"></div><div class="mock-pixel"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="components">
+      <div class="comp-tag">Sidebar</div>
+      <div class="comp-tag pink">DotEditorCanvas</div>
+      <div class="comp-tag">ToolPanel</div>
+      <div class="comp-tag">PaletteSelector</div>
+      <div class="comp-tag">GridSizeSelector</div>
+      <div class="comp-tag">ExportButtons</div>
+      <div class="comp-tag">DotStore (예정)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE 3: 터미널 ═══════════ -->
+<div class="page-section">
+  <div class="page-header">
+    <div class="page-title">3. 터미널</div>
+    <div class="page-desc">Warp 스타일 bash 기반 터미널 · Claude CLI 연동 · 태스크별 세션</div>
+  </div>
+  <div class="divider"></div>
+  <div class="page-card">
+    <div class="screen">
+      <div class="mock-sidebar">
+        <div class="mock-sidebar-item"><div class="mock-icon">🏠</div><div class="mock-label">홈</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">✏️</div><div class="mock-label">에디터</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">📋</div><div class="mock-label">태스크</div></div>
+        <div class="mock-sidebar-item active"><div class="mock-icon">💻</div><div class="mock-label">터미널</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">🔌</div><div class="mock-label">플러그인</div></div>
+      </div>
+      <div class="mock-content">
+        <div class="mock-content-header" style="padding:8px 20px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:6px;height:6px;border-radius:50%;background:#00b894;"></div>
+            <span style="font-size:13px;font-weight:500;color:#e8e8f0;">🎓 대학교</span>
+            <span style="font-size:12px;color:#9090a8;">/ 종합설계 과제 제출</span>
+          </div>
+          <div class="mock-content-meta">15:30부터 실행 중</div>
+        </div>
+        <div style="display:flex;gap:4px;padding:4px 12px;background:#1a1a24;border-bottom:1px solid #2e2e42;">
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:rgba(108,92,231,0.12);font-size:12px;color:#6c5ce7;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#00b894;"></div>
+            🎓 종합설계 과제 제출
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:12px;color:#9090a8;">
+            <div style="width:5px;height:5px;border-radius:50%;background:#00b894;"></div>
+            💻 Desker MVP
+          </div>
+        </div>
+        <div class="mock-terminal">
+          <div><span class="term-purple">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span></div>
+          <div><span class="term-purple" style="font-weight:bold;">  Desker Terminal</span> <span class="term-gray">— AI Agent Workspace</span></div>
+          <div><span class="term-gray">  🎓 대학교 / 종합설계 과제 제출</span></div>
+          <div><span class="term-purple">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</span></div>
+          <div>&nbsp;</div>
+          <div><span class="term-green">❯</span> claude</div>
+          <div><span class="term-purple">  ⟡ Claude AI를 시작합니다...</span></div>
+          <div><span class="term-gray">  (Phase 2에서 실제 claude CLI와 PTY 연동 예정)</span></div>
+          <div>&nbsp;</div>
+          <div><span class="term-purple" style="font-weight:bold;">  Claude</span> <span class="term-gray">›</span> 안녕하세요! 무엇을 도와드릴까요?</div>
+          <div><span class="term-gray">  현재 작업: 🎓 대학교 / 종합설계 과제 제출</span></div>
+          <div>&nbsp;</div>
+          <div><span class="term-green">❯</span> <span style="border-right:2px solid #6c5ce7;padding-right:1px;">_</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="components">
+      <div class="comp-tag">Sidebar</div>
+      <div class="comp-tag">SessionHeader</div>
+      <div class="comp-tag pink">SessionTabs</div>
+      <div class="comp-tag pink">TerminalInstance (xterm.js)</div>
+      <div class="comp-tag">EmptyTerminal</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE 4: 플러그인 ═══════════ -->
+<div class="page-section">
+  <div class="page-header">
+    <div class="page-title">4. MCP 플러그인</div>
+    <div class="page-desc">OAuth 기반 외부 서비스 연결 · Notion, Gmail, Calendar 등</div>
+  </div>
+  <div class="divider"></div>
+  <div class="page-card">
+    <div class="screen">
+      <div class="mock-sidebar">
+        <div class="mock-sidebar-item"><div class="mock-icon">🏠</div><div class="mock-label">홈</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">✏️</div><div class="mock-label">에디터</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">📋</div><div class="mock-label">태스크</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">💻</div><div class="mock-label">터미널</div></div>
+        <div class="mock-sidebar-item active"><div class="mock-icon">🔌</div><div class="mock-label">플러그인</div></div>
+      </div>
+      <div class="mock-content">
+        <div class="mock-content-header">
+          <div>
+            <div class="mock-content-title">🔌 MCP 플러그인</div>
+            <div style="font-size:12px;color:#9090a8;margin-top:2px;">OAuth로 외부 서비스를 연결하여 AI Agent가 활용</div>
+          </div>
+        </div>
+        <div class="mock-content-body">
+          <div class="mock-plugin-grid">
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">📝</div><div class="mock-plugin-info"><div class="mock-plugin-name">Notion</div><div class="mock-plugin-desc">노트 & 데이터베이스 연동</div></div><div class="mock-plugin-btn">연결</div></div>
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">📧</div><div class="mock-plugin-info"><div class="mock-plugin-name">Gmail</div><div class="mock-plugin-desc">이메일 검색 & 요약</div></div><div class="mock-plugin-btn">연결</div></div>
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">📅</div><div class="mock-plugin-info"><div class="mock-plugin-name">Google Calendar</div><div class="mock-plugin-desc">일정 관리 & 조회</div></div><div class="mock-plugin-btn">연결</div></div>
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">🎨</div><div class="mock-plugin-info"><div class="mock-plugin-name">Figma</div><div class="mock-plugin-desc">디자인 컨텍스트 연동</div></div><div class="mock-plugin-btn connected">연결됨</div></div>
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">🖼️</div><div class="mock-plugin-info"><div class="mock-plugin-name">Canva</div><div class="mock-plugin-desc">디자인 에셋 관리</div></div><div class="mock-plugin-btn">연결</div></div>
+            <div class="mock-plugin-card"><div class="mock-plugin-icon">📄</div><div class="mock-plugin-info"><div class="mock-plugin-name">Google Docs</div><div class="mock-plugin-desc">문서 접근 & 편집</div></div><div class="mock-plugin-btn">연결</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="components">
+      <div class="comp-tag">Sidebar</div>
+      <div class="comp-tag pink">PluginManager</div>
+      <div class="comp-tag">PluginCard</div>
+      <div class="comp-tag">OAuthConnector (예정)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ PAGE 5: 설정 ═══════════ -->
+<div class="page-section">
+  <div class="page-header">
+    <div class="page-title">5. 설정</div>
+    <div class="page-desc">테마 · 알림 · 자동 실행 · 앱 정보</div>
+  </div>
+  <div class="divider"></div>
+  <div class="page-card">
+    <div class="screen" style="height:300px;">
+      <div class="mock-sidebar">
+        <div class="mock-sidebar-item"><div class="mock-icon">🏠</div><div class="mock-label">홈</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">✏️</div><div class="mock-label">에디터</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">📋</div><div class="mock-label">태스크</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">💻</div><div class="mock-label">터미널</div></div>
+        <div class="mock-sidebar-item"><div class="mock-icon">🔌</div><div class="mock-label">플러그인</div></div>
+      </div>
+      <div class="mock-content">
+        <div class="mock-content-header"><div class="mock-content-title">⚙️ 설정</div></div>
+        <div class="mock-content-body">
+          <div style="margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:500;color:#e8e8f0;margin-bottom:8px;">테마</div>
+            <div style="display:flex;gap:8px;">
+              <div style="padding:8px 16px;border-radius:8px;font-size:13px;border:1px solid #6c5ce7;background:rgba(108,92,231,0.12);color:#6c5ce7;">🌙 다크</div>
+              <div style="padding:8px 16px;border-radius:8px;font-size:13px;border:1px solid #2e2e42;color:#9090a8;">☀️ 라이트</div>
+              <div style="padding:8px 16px;border-radius:8px;font-size:13px;border:1px solid #2e2e42;color:#9090a8;">💻 시스템</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:#9090a8;">추후 커스텀 테마 색상 및 배경 이미지 설정 추가 예정</div>
+        </div>
+      </div>
+    </div>
+    <div class="components">
+      <div class="comp-tag">Sidebar</div>
+      <div class="comp-tag">ThemeSelector</div>
+      <div class="comp-tag">SettingsToggle</div>
+      <div class="comp-tag">AppInfo</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

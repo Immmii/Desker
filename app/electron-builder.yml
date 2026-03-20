@@ -1,0 +1,14 @@
+appId: com.desker.app
+productName: Desker
+mac:
+  target: dmg
+  category: public.app-category.productivity
+files:
+  - dist/**/*
+  - package.json
+  - node_modules/**/*
+extraResources:
+  - resources/**
+asar: true
+directories:
+  output: release

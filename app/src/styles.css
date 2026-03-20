@@ -1,0 +1,181 @@
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+@import "tailwindcss";
+
+/*
+ * ══════════════════════════════════════════════════
+ * Desker Design System — Grid & Spacing
+ * ══════════════════════════════════════════════════
+ *
+ * Base unit: 4px
+ * Scale: 0 / 2 / 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48 / 64
+ *
+ * ── Spacing tokens (use via Tailwind or CSS var) ──
+ * --space-0:   0px
+ * --space-0.5: 2px    micro gap (icon-text inline)
+ * --space-1:   4px    tight gap (inline elements)
+ * --space-1.5: 6px    tab gap, badge padding-y
+ * --space-2:   8px    default gap between siblings
+ * --space-3:  12px    card inner padding (compact)
+ * --space-4:  16px    section padding, card padding
+ * --space-5:  20px    page header padding
+ * --space-6:  24px    page container padding
+ * --space-8:  32px    section gap
+ * --space-10: 40px    page top margin
+ * --space-12: 48px    large section spacing
+ * --space-16: 64px    page-level margin
+ *
+ * ── Component padding guide ──
+ * Titlebar:        h=36px, px=8
+ * Sidebar:         w=72px, py=12, icon-gap=4
+ * Session header:  px=16, py=10
+ * Tab bar:         px=12, py=6
+ * Tab button:      px=12, py=6
+ * Card:            p=16, gap=12
+ * Input field:     px=16, py=12
+ * Button (sm):     px=12, py=6
+ * Button (md):     px=16, py=10
+ * Button (lg):     px=24, py=14
+ * List item:       px=12, py=8
+ * Page container:  px=24, py=24
+ * Modal:           p=24, gap=16
+ * Panel header:    px=16, py=12
+ *
+ * ── Typography ──
+ * Display:   24px / 700
+ * Title:     18px / 700
+ * Subtitle:  16px / 600
+ * Body:      14px / 400
+ * Caption:   12px / 400
+ * Micro:     11px / 500
+ */
+
+@theme {
+  --color-bg-primary: #0f0f13;
+  --color-bg-secondary: #1a1a24;
+  --color-bg-tertiary: #242434;
+  --color-bg-hover: #2a2a3d;
+  --color-border: #2e2e42;
+  --color-text-primary: #e8e8f0;
+  --color-text-secondary: #9090a8;
+  --color-accent: #6c5ce7;
+  --color-accent-hover: #7c6df7;
+  --color-success: #00b894;
+  --color-warning: #fdcb6e;
+  --color-danger: #e17055;
+  --color-pixel-green: #55efc4;
+  --color-pixel-blue: #74b9ff;
+  --color-pixel-pink: #fd79a8;
+  --color-pixel-yellow: #ffeaa7;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Titlebar drag region (Electron frameless window) */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-drag button,
+.titlebar-drag input,
+.titlebar-drag select {
+  -webkit-app-region: no-drag;
+}
+
+/* Pixel art rendering - no blur */
+.pixel-render {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-text-secondary);
+  opacity: 0.3;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-primary);
+}
+
+/* xterm padding — use margin on container so FitAddon calculates cols correctly */
+.xterm {
+  padding: 8px 0 0 0;
+  margin: 0 4px;
+}
+.xterm,
+.xterm-viewport,
+.xterm-screen {
+  background-color: var(--color-bg-primary) !important;
+}
+/* Dark mode: override xterm dim text to be readable */
+[data-theme="dark"] .xterm-dim,
+:not([data-theme="light"]) .xterm-dim {
+  opacity: 0.85 !important;
+  color: #ffffff !important;
+}
+
+/* Scrollbar inside xterm — rounded capsule */
+.xterm-viewport::-webkit-scrollbar {
+  width: 10px !important;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: var(--color-bg-primary) !important;
+  margin: 6px 0 !important;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background-color: var(--color-text-secondary) !important;
+  opacity: 0.3;
+  border-radius: 999px !important;
+  border: 3px solid transparent !important;
+  background-clip: content-box !important;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-text-primary) !important;
+}
+
+/* Window blur — no opacity change, handled natively by macOS traffic lights */
+
+/* Light theme overrides */
+[data-theme="light"] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f5f5f7;
+  --color-bg-tertiary: #e8e8ed;
+  --color-bg-hover: #ececf0;
+  --color-border: #d1d1d6;
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #86868b;
+  --color-accent: #6c5ce7;
+  --color-accent-hover: #7c6df7;
+  --color-success: #00b894;
+  --color-warning: #fdcb6e;
+  --color-danger: #e17055;
+  --color-pixel-green: #55efc4;
+  --color-pixel-blue: #74b9ff;
+  --color-pixel-pink: #fd79a8;
+  --color-pixel-yellow: #ffeaa7;
+}
