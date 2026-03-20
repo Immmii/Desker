@@ -1,0 +1,101 @@
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import path from "path";
+import { initDatabase } from "./services/db.service";
+import { registerDbHandlers } from "./ipc/db.ipc";
+import { registerPtyHandlers } from "./ipc/pty.ipc";
+import { registerFsHandlers } from "./ipc/fs.ipc";
+import { registerAiHandlers } from "./ipc/ai.ipc";
+import { registerDotArtHandlers } from "./ipc/dotart.ipc";
+import { registerMcpHandlers } from "./ipc/mcp.ipc";
+import { registerOAuthHandlers } from "./ipc/oauth.ipc";
+import { registerAiChatHandlers } from "./ipc/ai-chat.ipc";
+
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    minWidth: 900,
+    minHeight: 600,
+    titleBarStyle: "hidden",
+    trafficLightPosition: { x: 14, y: 13 },
+    backgroundColor: "#0f0f13",
+    webPreferences: {
+      preload: path.join(__dirname, "../preload/preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+    },
+  });
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
+  }
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+
+  mainWindow.on("blur", () => {
+    mainWindow?.webContents.send("window:blur");
+  });
+  mainWindow.on("focus", () => {
+    mainWindow?.webContents.send("window:focus");
+  });
+}
+
+app.whenReady().then(() => {
+  // Enable Cmd+C/V/X/A in frameless window
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "Edit",
+        submenu: [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "selectAll" },
+        ],
+      },
+    ])
+  );
+
+  initDatabase();
+
+  const getWindow = () => mainWindow;
+  registerDbHandlers(ipcMain);
+  registerPtyHandlers(ipcMain, getWindow);
+  registerFsHandlers(ipcMain);
+  registerAiHandlers(ipcMain, getWindow);
+  registerDotArtHandlers(ipcMain);
+  registerMcpHandlers(ipcMain);
+  registerOAuthHandlers(ipcMain);
+  registerAiChatHandlers(ipcMain, getWindow);
+
+  // Window control handlers
+  ipcMain.handle("window:minimize", () => mainWindow?.minimize());
+  ipcMain.handle("window:maximize", () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+  ipcMain.handle("window:close", () => mainWindow?.close());
+
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on("window-all-closed", () => {
+  app.quit();
+});
