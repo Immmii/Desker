@@ -22,188 +22,117 @@ import { useSessionVM } from "../../viewmodels/session.vm";
 import { useAppVM } from "../../viewmodels/app.vm";
 import { useAiVM } from "../../viewmodels/ai.vm";
 import { useTerminal, setPendingFiles } from "../../hooks/useTerminal";
-import type { TerminalMode, AiModel, TerminalSession } from "../../viewmodels/session.vm";
+import type { TerminalMode, AiModel, TerminalSession, AgentRole, AgentEnvironment } from "../../viewmodels/session.vm";
+import { getAgentPreset } from "../../viewmodels/session.vm";
 import StartSessionModal from "../shared/StartSessionModal";
-import { useReferenceVM } from "../../viewmodels/reference.vm";
+import TaskDetailModal from "../shared/TaskDetailModal";
 import { useProjectVM } from "../../viewmodels/project.vm";
-import type { Task } from "../../types/models";
+import type { Task, TodoItem } from "../../types/models";
 
-// ── Task Panel Toggle (replaces ReferencePanelToggle) ──
-function TaskPanelToggle() {
-  const { panelOpen, togglePanel } = useReferenceVM();
-  return (
-    <button
-      onClick={togglePanel}
-      style={{
-        padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: panelOpen ? 600 : 400,
-        border: panelOpen ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
-        background: panelOpen ? "rgba(108,92,231,0.15)" : "var(--color-bg-secondary)",
-        color: panelOpen ? "var(--color-accent)" : "var(--color-text-secondary)",
-        cursor: "pointer", transition: "all 0.15s",
-        display: "flex", alignItems: "center", gap: "4px",
-      }}
-      className="hover:bg-bg-hover"
-      title={panelOpen ? "태스크 패널 닫기" : "태스크 패널 열기"}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 11l3 3L22 4" />
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-      </svg>
-      태스크
-    </button>
-  );
-}
-
-// ── Task Panel (replaces ReferencePanel) ──
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  todo: { label: "할 일", color: "var(--color-text-secondary)" },
-  in_progress: { label: "진행 중", color: "var(--color-accent)" },
-  done: { label: "완료", color: "var(--color-success)" },
-};
+// ── Task label constants ──
 const PRI_LABEL: Record<string, { label: string; color: string }> = {
   high: { label: "높음", color: "var(--color-danger)" },
   medium: { label: "보통", color: "var(--color-warning)" },
   low: { label: "낮음", color: "var(--color-success)" },
 };
 
-function TaskPanel({ session }: { session: TerminalSession }) {
-  const { panelOpen, panelWidth } = useReferenceVM();
+// ── Compact Task Bar (shown in each pane's tab bar) ──
+function TaskBarCompact({ session }: { session: TerminalSession }) {
   const { tasks, projects, loadAll } = useProjectVM();
-  const { updateTaskStatus } = useProjectVM();
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => { loadAll(); }, [loadAll]);
-
-  if (!panelOpen) return null;
 
   const task: Task | undefined = tasks.find((t) => t.id === session.taskId);
   const project = task ? projects.find((p) => p.id === task.projectId) : null;
   const isQuick = session.taskId === "quick";
 
-  return (
-    <div style={{
-      width: panelWidth, flexShrink: 0,
-      borderLeft: "1px solid var(--color-border)",
-      display: "flex", flexDirection: "column",
-      background: "var(--color-bg-secondary)",
-    }}>
-      {/* Header — fixed height matches tab bar */}
-      <div style={{
-        padding: "0 16px",
-        height: "40px",
-        borderBottom: "1px solid var(--color-border)",
-        display: "flex", alignItems: "center", gap: "8px",
-        flexShrink: 0,
-      }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  if (isQuick || !task) return null;
+
+  if (!visible) {
+    return (
+      <button
+        onClick={() => setVisible(true)}
+        title="연관 태스크 보기"
+        style={{
+          padding: "4px 8px", borderRadius: 6, fontSize: 11,
+          border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
+          color: "var(--color-text-secondary)", cursor: "pointer", flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 3,
+        }}
+        className="hover:bg-bg-hover transition-colors"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 11l3 3L22 4" />
           <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
         </svg>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>
-          연관 태스크
+      </button>
+    );
+  }
+
+  const pri = PRI_LABEL[task.priority];
+  const truncTitle = task.title.length > 20 ? task.title.slice(0, 20) + "..." : task.title;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+      {/* Project */}
+      {project && (
+        <span
+          style={{
+            padding: "3px 8px", borderRadius: 5, fontSize: 11, fontWeight: 500,
+            background: "var(--color-bg-primary)", border: "1px solid var(--color-border)",
+            color: "var(--color-text-secondary)", display: "flex", alignItems: "center", gap: 4,
+            maxWidth: 100, overflow: "hidden", whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ fontSize: 11 }}>{project.icon}</span>
+          <span className="truncate">{project.name}</span>
         </span>
-      </div>
+      )}
 
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-        {isQuick || !task ? (
-          <div style={{ textAlign: "center", padding: "32px 0", color: "var(--color-text-secondary)" }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px", opacity: 0.3 }}>
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            <p style={{ fontSize: 13, marginBottom: 4 }}>연결된 태스크 없음</p>
-            <p style={{ fontSize: 12, opacity: 0.6 }}>태스크에서 세션을 시작하면 여기에 표시됩니다</p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {/* Project */}
-            {project && (
-              <div style={{
-                padding: "8px 12px", borderRadius: 8,
-                background: "var(--color-bg-primary)", border: "1px solid var(--color-border)",
-                display: "flex", alignItems: "center", gap: "8px",
-              }}>
-                <span style={{ fontSize: 14 }}>{project.icon}</span>
-                <span style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{project.name}</span>
-              </div>
-            )}
+      {/* Title */}
+      <span
+        style={{
+          padding: "3px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+          background: "var(--color-bg-primary)", border: "1px solid var(--color-border)",
+          color: "var(--color-text-primary)",
+          maxWidth: 160, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+        }}
+        title={task.title}
+      >
+        {truncTitle}
+      </span>
 
-            {/* Task title */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" }}>제목</label>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)", lineHeight: 1.5 }}>{task.title}</p>
-            </div>
+      {/* Priority */}
+      {pri && (
+        <span
+          style={{
+            padding: "3px 8px", borderRadius: 5, fontSize: 11, fontWeight: 600,
+            border: `1px solid ${pri.color}`,
+            color: pri.color,
+            background: `color-mix(in srgb, ${pri.color} 12%, transparent)`,
+          }}
+        >
+          {pri.label}
+        </span>
+      )}
 
-            {/* Description */}
-            {task.description && (
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" }}>설명</label>
-                <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{task.description}</p>
-              </div>
-            )}
-
-            {/* Status & Priority row */}
-            <div style={{ display: "flex", gap: "8px" }}>
-              {/* Status */}
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" }}>상태</label>
-                <div style={{
-                  padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px",
-                  border: `1px solid ${STATUS_LABEL[task.status]?.color ?? "var(--color-border)"}`,
-                  color: STATUS_LABEL[task.status]?.color,
-                  background: `color-mix(in srgb, ${STATUS_LABEL[task.status]?.color ?? "var(--color-border)"} 12%, transparent)`,
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_LABEL[task.status]?.color }} />
-                  {STATUS_LABEL[task.status]?.label ?? task.status}
-                </div>
-              </div>
-              {/* Priority */}
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" }}>우선순위</label>
-                <div style={{
-                  padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px",
-                  border: `1px solid ${PRI_LABEL[task.priority]?.color ?? "var(--color-border)"}`,
-                  color: PRI_LABEL[task.priority]?.color,
-                  background: `color-mix(in srgb, ${PRI_LABEL[task.priority]?.color ?? "var(--color-border)"} 12%, transparent)`,
-                }}>
-                  {PRI_LABEL[task.priority]?.label ?? task.priority}
-                </div>
-              </div>
-            </div>
-
-            {/* Due date */}
-            {task.dueDate && (
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" }}>마감일</label>
-                <p style={{ fontSize: 13, color: "var(--color-text-primary)" }}>{new Date(task.dueDate).toLocaleDateString("ko-KR")}</p>
-              </div>
-            )}
-
-            {/* Quick status change buttons */}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8, display: "block" }}>상태 변경</label>
-              <div style={{ display: "flex", gap: "4px" }}>
-                {(["todo", "in_progress", "done"] as const).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => updateTaskStatus(task.id, s)}
-                    style={{
-                      padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: task.status === s ? 600 : 400,
-                      border: task.status === s ? `1px solid ${STATUS_LABEL[s].color}` : "1px solid var(--color-border)",
-                      background: task.status === s ? `color-mix(in srgb, ${STATUS_LABEL[s].color} 15%, transparent)` : "var(--color-bg-primary)",
-                      color: task.status === s ? STATUS_LABEL[s].color : "var(--color-text-secondary)",
-                      cursor: "pointer", transition: "all 0.15s",
-                    }}
-                  >
-                    {STATUS_LABEL[s].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Hide */}
+      <button
+        onClick={() => setVisible(false)}
+        title="숨기기"
+        style={{
+          padding: "3px 6px", borderRadius: 5, fontSize: 11,
+          border: "1px solid var(--color-border)", background: "transparent",
+          color: "var(--color-text-secondary)", cursor: "pointer",
+          display: "flex", alignItems: "center",
+        }}
+        className="hover:bg-bg-hover transition-colors"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
     </div>
   );
 }
@@ -245,8 +174,8 @@ function ProjectIcon({ icon, mode, aiModel, size = 16 }: { icon?: string; mode?:
 type DroppedFile = { name: string; path: string };
 
 // ── Terminal with file drop overlay ──
-function TerminalWithDrop({ sessionId, mode, aiModel, droppedFiles, onFileDrop, onFileClear, onFileRemove }: {
-  sessionId: string; mode: TerminalMode; aiModel?: AiModel;
+function TerminalWithDrop({ sessionId, mode, aiModel, agentRole, taskId, droppedFiles, onFileDrop, onFileClear, onFileRemove }: {
+  sessionId: string; mode: TerminalMode; aiModel?: AiModel; agentRole?: AgentRole; taskId?: string;
   droppedFiles: DroppedFile[];
   onFileDrop: (files: DroppedFile[]) => void;
   onFileClear: () => void;
@@ -256,7 +185,7 @@ function TerminalWithDrop({ sessionId, mode, aiModel, droppedFiles, onFileDrop, 
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
 
-  useTerminal(sessionId, containerRef, mode, aiModel, false);
+  useTerminal(sessionId, containerRef, mode, aiModel, false, agentRole, taskId);
 
   // Sync dropped files to pending map so useTerminal can consume on Enter
   const onClearRef = useRef(onFileClear);
@@ -381,7 +310,7 @@ function SessionTerminal({ session, droppedFiles, onFileDrop, onFileClear, onFil
   onFileClear: () => void;
   onFileRemove: (idx: number) => void;
 }) {
-  return <TerminalWithDrop key={session.id} sessionId={session.id} mode={session.mode} aiModel={session.aiModel} droppedFiles={droppedFiles} onFileDrop={onFileDrop} onFileClear={onFileClear} onFileRemove={onFileRemove} />;
+  return <TerminalWithDrop key={session.id} sessionId={session.id} mode={session.mode} aiModel={session.aiModel} agentRole={session.agentRole} taskId={session.taskId} droppedFiles={droppedFiles} onFileDrop={onFileDrop} onFileClear={onFileClear} onFileRemove={onFileRemove} />;
 }
 
 // ── Quick Action Bar ──
@@ -631,18 +560,22 @@ function Pane({
       }`}
     >
       {/* Tab bar */}
-      <div style={{ padding: "0 16px", display: "flex", alignItems: "center", gap: "4px", borderBottom: "1px solid var(--color-border)", flexShrink: 0, overflowX: "auto", height: "40px" }}>
-        <SortableContext items={paneSessions.map((s) => s.id)} strategy={horizontalListSortingStrategy}>
-          {paneSessions.map((s) => (
-            <DraggableTab
-              key={s.id}
-              session={s}
-              isActive={s.id === active?.id}
-              onClick={() => onSetActive(s.id)}
-              onClose={() => onCloseSession(s.id)}
-            />
-          ))}
-        </SortableContext>
+      <div style={{ padding: "0 12px 0 16px", display: "flex", alignItems: "center", gap: "4px", borderBottom: "1px solid var(--color-border)", flexShrink: 0, height: "40px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, overflowX: "auto", flex: 1, minWidth: 0 }}>
+          <SortableContext items={paneSessions.map((s) => s.id)} strategy={horizontalListSortingStrategy}>
+            {paneSessions.map((s) => (
+              <DraggableTab
+                key={s.id}
+                session={s}
+                isActive={s.id === active?.id}
+                onClick={() => onSetActive(s.id)}
+                onClose={() => onCloseSession(s.id)}
+              />
+            ))}
+          </SortableContext>
+        </div>
+        {/* Compact task bar — right-aligned */}
+        {active && <TaskBarCompact session={active} />}
       </div>
 
       {/* Terminal */}
@@ -804,6 +737,23 @@ function TerminalHeader({
         </div>
       )}
 
+      {/* Agent role badge */}
+      {session.agentRole && (() => {
+        const preset = getAgentPreset(session.agentRole);
+        return preset ? (
+          <div style={{
+            padding: "4px 12px", borderRadius: "6px", fontSize: "12px", fontWeight: 600,
+            border: `1px solid ${preset.color}50`,
+            background: `${preset.color}15`,
+            color: preset.color,
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <span style={{ fontSize: 14 }}>{preset.icon}</span>
+            {preset.label}
+          </div>
+        ) : null;
+      })()}
+
       {/* Divider */}
       <div style={{ width: "1px", height: "24px", background: "var(--color-border)" }} />
 
@@ -829,8 +779,7 @@ function TerminalHeader({
         </div>
       )}
 
-      {/* Reference panel toggle (single pane only) */}
-      {!isSplit && <TaskPanelToggle />}
+      {/* (task bar is now inline in each pane's tab bar) */}
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
@@ -865,6 +814,171 @@ function TerminalHeader({
         </svg>
         새 세션
       </button>
+    </div>
+  );
+}
+
+// ── Right Task Panel ──
+function TaskRightPanel({ session }: { session: TerminalSession }) {
+  const { tasks, projects, updateTask } = useProjectVM();
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+
+  const task = tasks.find((t) => t.id === session.taskId);
+  const project = task ? projects.find((p) => p.id === task.projectId) : null;
+  const isQuick = session.taskId === "quick";
+
+  // Load todos
+  useEffect(() => {
+    if (!task) return;
+    window.deskerAPI.db.getTaskTodos(task.id).then((rows) => {
+      setTodos(rows.map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        taskId: r.task_id as string,
+        text: r.text as string,
+        done: !!(r.done as number),
+        sortOrder: r.sort_order as number,
+      })));
+    });
+  }, [task?.id]);
+
+  const toggleTodo = async (todo: TodoItem) => {
+    await window.deskerAPI.db.updateTaskTodo(todo.id, { done: todo.done ? 0 : 1 });
+    setTodos((prev) => prev.map((t) => (t.id === todo.id ? { ...t, done: !t.done } : t)));
+  };
+
+  if (isQuick || !task) return null;
+
+  const statusLabel = task.status === "todo" ? "할 일" : task.status === "in_progress" ? "진행 중" : "완료";
+  const statusColor = task.status === "todo" ? "#9090a8" : task.status === "in_progress" ? "#74b9ff" : "#00b894";
+  const pri = PRI_LABEL[task.priority];
+  const doneCount = todos.filter((t) => t.done).length;
+
+  return (
+    <div style={{
+      width: 260, flexShrink: 0, borderLeft: "1px solid var(--color-border)",
+      display: "flex", flexDirection: "column", overflowY: "auto",
+      padding: "16px 14px", gap: 14,
+    }}>
+      {/* Header */}
+      <div>
+        {project && (
+          <div style={{ fontSize: 11, marginBottom: 4 }} className="text-text-secondary">
+            {project.icon} {project.name}
+          </div>
+        )}
+        <div
+          onClick={() => setDetailTaskId(task.id)}
+          style={{ fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+          className="text-text-primary hover:text-accent transition-colors"
+        >
+          {task.title}
+        </div>
+      </div>
+
+      {/* Agent badge */}
+      {session.agentRole && (() => {
+        const preset = getAgentPreset(session.agentRole);
+        return preset ? (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "5px 10px", borderRadius: 8,
+            background: `${preset.color}15`, border: `1px solid ${preset.color}40`,
+          }}>
+            <span style={{ fontSize: 14 }}>{preset.icon}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: preset.color }}>{preset.label}</span>
+          </div>
+        ) : null;
+      })()}
+
+      {/* Status + Priority */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <span style={{
+          fontSize: 11, padding: "2px 8px", borderRadius: 6,
+          color: statusColor, background: `${statusColor}20`, fontWeight: 500,
+        }}>
+          {statusLabel}
+        </span>
+        <span style={{
+          fontSize: 11, padding: "2px 8px", borderRadius: 6,
+          color: pri.color, background: "var(--color-bg-tertiary)", fontWeight: 500,
+        }}>
+          {pri.label}
+        </span>
+      </div>
+
+      {/* Dates */}
+      {(task.startDate || task.dueDate) && (
+        <div style={{ fontSize: 12 }} className="text-text-secondary">
+          {task.startDate && <span>{task.startDate}</span>}
+          {task.startDate && task.dueDate && <span> ~ </span>}
+          {task.dueDate && <span>{task.dueDate}</span>}
+        </div>
+      )}
+
+      {/* Description */}
+      {task.description && (
+        <div style={{ fontSize: 13, lineHeight: 1.5 }} className="text-text-secondary">
+          {task.description}
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ height: 1 }} className="bg-border" />
+
+      {/* Todos */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }} className="text-text-secondary">TODO</span>
+          {todos.length > 0 && (
+            <span style={{ fontSize: 11 }} className="text-text-secondary">{doneCount}/{todos.length}</span>
+          )}
+        </div>
+        {todos.length === 0 ? (
+          <div style={{ fontSize: 12 }} className="text-text-secondary/40">하위 TODO 없음</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {todos.map((todo) => (
+              <div key={todo.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px" }}>
+                <button
+                  onClick={() => toggleTodo(todo)}
+                  style={{
+                    width: 16, height: 16, borderRadius: "50%",
+                    border: "2px solid",
+                    flexShrink: 0, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderColor: todo.done ? "var(--color-success, #00b894)" : "var(--color-text-secondary)",
+                    background: todo.done ? "rgba(0,184,148,0.2)" : "transparent",
+                    opacity: todo.done ? 1 : 0.5,
+                  }}
+                >
+                  {todo.done && <span style={{ fontSize: 9, color: "var(--color-success, #00b894)", fontWeight: 700 }}>✓</span>}
+                </button>
+                <span style={{
+                  fontSize: 12,
+                  textDecoration: todo.done ? "line-through" : "none",
+                  opacity: todo.done ? 0.5 : 1,
+                }} className={todo.done ? "text-text-secondary" : "text-text-primary"}>
+                  {todo.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Open detail button */}
+      <button
+        onClick={() => setDetailTaskId(task.id)}
+        style={{ fontSize: 12, padding: "6px 0", marginTop: "auto" }}
+        className="text-text-secondary/40 hover:text-accent cursor-pointer transition-colors"
+      >
+        상세 보기 →
+      </button>
+
+      {detailTaskId && (
+        <TaskDetailModal taskId={detailTaskId} onClose={() => setDetailTaskId(null)} />
+      )}
     </div>
   );
 }
@@ -946,13 +1060,14 @@ export default function TerminalPage() {
   const getPaneSessions = (pane: PaneState): TerminalSession[] =>
     pane.sessionIds.map((id) => sessions.find((s) => s.id === id)).filter(Boolean) as TerminalSession[];
 
-  const handleNewSession = (mode: TerminalMode, aiModel?: AiModel) => {
+  const handleNewSession = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
+    const preset = agentRole ? getAgentPreset(agentRole) : null;
     createSession({
       taskId: "quick",
-      taskTitle: mode === "ai" ? `${aiModel === "claude" ? "Claude" : "ChatGPT"} 세션` : "터미널",
+      taskTitle: preset ? `${preset.icon} ${preset.label}` : mode === "ai" ? `${aiModel === "claude" ? "Claude" : "ChatGPT"} 세션` : "터미널",
       projectName: "빠른 시작",
       projectIcon: "",
-      mode, aiModel,
+      mode, aiModel, agentRole, agentEnv,
     });
     setShowNewSession(false);
   };
@@ -1134,8 +1249,8 @@ export default function TerminalPage() {
             return srcHasMultiple ? <SplitDropZone isDragging={true} /> : null;
           })()}
 
-          {/* Task panel: only when single pane */}
-          {!isSplit && activeSession && <TaskPanel session={activeSession} />}
+          {/* Right task panel */}
+          {activeSession && <TaskRightPanel session={activeSession} />}
         </div>
 
         {showNewSession && (
