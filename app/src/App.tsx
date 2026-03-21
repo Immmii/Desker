@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import AppShell from "./views/layouts/AppShell";
-import { useThemeStore } from "./views/pages/SettingsPage";
+import { useSettingsStore } from "./views/pages/SettingsPage";
 
 export default function App() {
-  const mode = useThemeStore((s) => s.mode);
+  const mode = useSettingsStore((s) => s.mode);
 
   useEffect(() => {
     // Apply theme on mount and when mode changes

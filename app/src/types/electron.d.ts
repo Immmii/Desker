@@ -25,7 +25,47 @@ interface TaskRow {
   status: string;
   priority: string;
   due_date: string | null;
+  start_date: string | null;
   created_at: string;
+}
+
+interface TaskTodoRow {
+  id: string;
+  task_id: string;
+  text: string;
+  done: number;
+  sort_order: number;
+}
+
+interface AgentContextRow {
+  id: string;
+  task_id: string;
+  agent_role: string;
+  content: string;
+  created_at: string;
+}
+
+interface TimetableBlockRow {
+  id: string;
+  date: string;
+  cell_key: string;
+  task_id: string;
+  color: string;
+  created_at: string;
+}
+
+interface HabitRow {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+interface HabitLogRow {
+  id: string;
+  habit_id: string;
+  date: string;
+  done: number;
 }
 
 interface DotArtRow {
@@ -61,12 +101,32 @@ export interface DeskerAPI {
       status: string;
       priority: string;
       due_date: string | null;
+      start_date?: string | null;
     }): Promise<TaskRow>;
     updateTask(id: string, updates: Record<string, unknown>): Promise<void>;
     removeTask(id: string): Promise<void>;
 
+    getTaskTodos(taskId: string): Promise<TaskTodoRow[]>;
+    addTaskTodo(t: { task_id: string; text: string }): Promise<TaskTodoRow>;
+    updateTaskTodo(id: string, updates: Record<string, unknown>): Promise<void>;
+    removeTaskTodo(id: string): Promise<void>;
+
+    saveAgentContext(taskId: string, agentRole: string, content: string): Promise<AgentContextRow>;
+    getAgentContexts(taskId: string): Promise<AgentContextRow[]>;
+
     getRoomObjects(): Promise<{ id: string; type: string; x: number; y: number; label: string }[]>;
     saveRoomObjects(objects: { id: string; type: string; x: number; y: number; label: string }[]): Promise<void>;
+
+    getTimetableBlocks(date: string): Promise<TimetableBlockRow[]>;
+    saveTimetableBlocks(date: string, blocks: { cell_key: string; task_id: string; color: string }[]): Promise<void>;
+    clearTimetableBlocks(date: string): Promise<void>;
+
+    getHabits(): Promise<HabitRow[]>;
+    addHabit(name: string): Promise<HabitRow>;
+    removeHabit(id: string): Promise<void>;
+    reorderHabit(id: string, sortOrder: number): Promise<void>;
+    getHabitLogs(weekStart: string, weekEnd: string): Promise<HabitLogRow[]>;
+    toggleHabitLog(habitId: string, date: string): Promise<number>;
   };
 
   dotart: {
@@ -78,8 +138,9 @@ export interface DeskerAPI {
   oauth: {
     getAll(): Promise<{ id: string; service: string; access_token: string; refresh_token: string | null; token_type: string; expires_at: string | null; user_email: string | null; connected_at: string }[]>;
     connect(service: string): Promise<void>;
-    disconnect(service: string): Promise<void>;
+    disconnect(service: string, mcpName?: string): Promise<void>;
     getStatus(service: string): Promise<{ id: string; service: string; access_token: string } | null>;
+    connectWithToken(service: string, mcpName: string, mcpPackage: string, env: Record<string, string>, account?: string): Promise<void>;
   };
 
   mcp: {
@@ -128,6 +189,10 @@ export interface DeskerAPI {
     minimize(): Promise<void>;
     maximize(): Promise<void>;
     close(): Promise<void>;
+    openExternal(url: string): Promise<void>;
+    setAutoLaunch(enabled: boolean): Promise<void>;
+    onBlur(cb: () => void): () => void;
+    onFocus(cb: () => void): () => void;
   };
 }
 

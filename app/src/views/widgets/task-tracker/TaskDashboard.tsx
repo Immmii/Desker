@@ -3,10 +3,11 @@ import { useProjectVM } from "../../../viewmodels/project.vm";
 import { useSessionVM } from "../../../viewmodels/session.vm";
 import { useAppVM } from "../../../viewmodels/app.vm";
 import type { Task, TaskStatus, TaskPriority } from "../../../types/models";
-import type { TerminalMode, AiModel } from "../../../viewmodels/session.vm";
+import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../../viewmodels/session.vm";
 import KanbanBoard from "./KanbanBoard";
 import CalendarView from "./CalendarView";
 import StartSessionModal from "../../shared/StartSessionModal";
+import TaskDetailModal from "../../shared/TaskDetailModal";
 
 const STATUS: Record<TaskStatus, { label: string; dot: string; text: string }> = {
   todo: { label: "할 일", dot: "bg-text-secondary", text: "text-text-secondary" },
@@ -52,6 +53,7 @@ function TaskAddForm({ onClose }: { onClose: () => void }) {
       status: "todo",
       priority,
       dueDate: dueDate || null,
+      startDate: null,
     });
     onClose();
   };
@@ -424,7 +426,7 @@ function TaskRowMenu({ task }: { task: Task }) {
   );
 }
 
-function TaskRow({ task }: { task: Task }) {
+function TaskRow({ task, onOpenDetail }: { task: Task; onOpenDetail: (id: string) => void }) {
   const { updateTaskStatus, projects } = useProjectVM();
   const createSession = useSessionVM((s) => s.createSession);
   const setPage = useAppVM((s) => s.setCurrentPage);
@@ -434,7 +436,7 @@ function TaskRow({ task }: { task: Task }) {
     task.status === "todo" ? "in_progress" : task.status === "in_progress" ? "done" : "todo";
   const [showStartModal, setShowStartModal] = useState(false);
 
-  const handleStart = (mode: TerminalMode, aiModel?: AiModel) => {
+  const handleStart = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
     if (task.status === "todo") updateTaskStatus(task.id, "in_progress");
     createSession({
       taskId: task.id,
@@ -443,13 +445,15 @@ function TaskRow({ task }: { task: Task }) {
       projectIcon: project?.icon ?? "📁",
       mode,
       aiModel,
+      agentRole,
+      agentEnv,
     });
     setPage("terminal");
     setShowStartModal(false);
   };
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 hover:bg-bg-hover/50 transition-colors group border-b border-border/30 last:border-0">
+    <div onClick={() => onOpenDetail(task.id)} className="flex items-center gap-4 px-4 py-3 hover:bg-bg-hover/50 transition-colors group border-b border-border/30 last:border-0 cursor-pointer">
       <button
         onClick={() => updateTaskStatus(task.id, next)}
         style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid", flexShrink: 0 }}
@@ -515,6 +519,7 @@ export default function TaskDashboard() {
   const { projects, tasks, selectedProjectId } = useProjectVM();
   const [view, setView] = useState<ViewMode>("kanban");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const isJournal = selectedProject?.type === "journal";
@@ -577,7 +582,7 @@ export default function TaskDashboard() {
                 <p style={{ fontSize: 15 }}>태스크가 없습니다</p>
               </div>
             ) : (
-              filteredTasks.map((task) => <TaskRow key={task.id} task={task} />)
+              filteredTasks.map((task) => <TaskRow key={task.id} task={task} onOpenDetail={setDetailTaskId} />)
             )}
             {showAddForm ? (
               <TaskAddForm onClose={() => setShowAddForm(false)} />
@@ -593,6 +598,10 @@ export default function TaskDashboard() {
           </div>
         )}
       </div>
+
+      {detailTaskId && (
+        <TaskDetailModal taskId={detailTaskId} onClose={() => setDetailTaskId(null)} />
+      )}
     </div>
   );
 }

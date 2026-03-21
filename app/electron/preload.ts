@@ -15,9 +15,32 @@ const api = {
       ipcRenderer.invoke("db:tasks:update", id, updates),
     removeTask: (id: string) => ipcRenderer.invoke("db:tasks:remove", id),
 
+    getTaskTodos: (taskId: string) => ipcRenderer.invoke("db:taskTodos:getAll", taskId),
+    addTaskTodo: (t: { task_id: string; text: string }) => ipcRenderer.invoke("db:taskTodos:add", t),
+    updateTaskTodo: (id: string, updates: Record<string, unknown>) =>
+      ipcRenderer.invoke("db:taskTodos:update", id, updates),
+    removeTaskTodo: (id: string) => ipcRenderer.invoke("db:taskTodos:remove", id),
+
+    saveAgentContext: (taskId: string, agentRole: string, content: string) =>
+      ipcRenderer.invoke("db:agentContexts:save", taskId, agentRole, content),
+    getAgentContexts: (taskId: string) =>
+      ipcRenderer.invoke("db:agentContexts:getByTaskId", taskId),
+
     getRoomObjects: () => ipcRenderer.invoke("db:roomObjects:getAll"),
     saveRoomObjects: (objects: Record<string, unknown>[]) =>
       ipcRenderer.invoke("db:roomObjects:save", objects),
+
+    getTimetableBlocks: (date: string) => ipcRenderer.invoke("db:timetableBlocks:getByDate", date),
+    saveTimetableBlocks: (date: string, blocks: { cell_key: string; task_id: string; color: string }[]) =>
+      ipcRenderer.invoke("db:timetableBlocks:saveBatch", date, blocks),
+    clearTimetableBlocks: (date: string) => ipcRenderer.invoke("db:timetableBlocks:clearDate", date),
+
+    getHabits: () => ipcRenderer.invoke("db:habits:getAll"),
+    addHabit: (name: string) => ipcRenderer.invoke("db:habits:add", name),
+    removeHabit: (id: string) => ipcRenderer.invoke("db:habits:remove", id),
+    reorderHabit: (id: string, sortOrder: number) => ipcRenderer.invoke("db:habits:reorder", id, sortOrder),
+    getHabitLogs: (weekStart: string, weekEnd: string) => ipcRenderer.invoke("db:habitLogs:get", weekStart, weekEnd),
+    toggleHabitLog: (habitId: string, date: string) => ipcRenderer.invoke("db:habitLogs:toggle", habitId, date),
   },
 
   // ── PTY Terminal ──
@@ -116,8 +139,11 @@ const api = {
   oauth: {
     getAll: () => ipcRenderer.invoke("oauth:getAll"),
     connect: (service: string) => ipcRenderer.invoke("oauth:connect", service),
-    disconnect: (service: string) => ipcRenderer.invoke("oauth:disconnect", service),
+    disconnect: (service: string, mcpName?: string) =>
+      ipcRenderer.invoke("oauth:disconnect", service, mcpName),
     getStatus: (service: string) => ipcRenderer.invoke("oauth:getStatus", service),
+    connectWithToken: (service: string, mcpName: string, mcpPackage: string, env: Record<string, string>, account?: string) =>
+      ipcRenderer.invoke("oauth:connectWithToken", service, mcpName, mcpPackage, env, account),
   },
 
   // ── MCP ──
@@ -141,6 +167,8 @@ const api = {
     minimize: () => ipcRenderer.invoke("window:minimize"),
     maximize: () => ipcRenderer.invoke("window:maximize"),
     close: () => ipcRenderer.invoke("window:close"),
+    openExternal: (url: string) => ipcRenderer.invoke("window:openExternal", url),
+    setAutoLaunch: (enabled: boolean) => ipcRenderer.invoke("window:setAutoLaunch", enabled),
     onBlur: (cb: () => void) => {
       ipcRenderer.on("window:blur", cb);
       return () => { ipcRenderer.removeListener("window:blur", cb); };

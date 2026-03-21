@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import type { TerminalMode, AiModel } from "../viewmodels/session.vm";
+import type { TerminalMode, AiModel, AgentRole } from "../viewmodels/session.vm";
+import { getAgentPreset } from "../viewmodels/session.vm";
 
 const TERMINAL_THEME_DARK = {
   background: "#0f0f13",
@@ -90,7 +91,9 @@ export function useTerminal(
   mode: TerminalMode = "shell",
   aiModel?: AiModel,
   /** AI mode: don't forward keyboard to PTY (textarea handles input) */
-  readOnly = false
+  readOnly = false,
+  agentRole?: AgentRole,
+  taskId?: string,
 ) {
   const fitRef = useRef<FitAddon | null>(null);
   const spawnedRef = useRef(false);
@@ -160,7 +163,35 @@ export function useTerminal(
 
       if (mode === "ai" && aiModel) {
         // AI CLI mode
-        api.ai.spawn(sessionId, aiModel, { cols, rows }).catch((err: Error) => {
+        api.ai.spawn(sessionId, aiModel, { cols, rows }).then(async () => {
+          // Inject agent system prompt if selected
+          if (agentRole) {
+            const preset = getAgentPreset(agentRole);
+            if (preset) {
+              await new Promise((r) => setTimeout(r, 1500));
+              api.ai.writeHidden(sessionId, `/system ${preset.systemPrompt}`);
+
+              // Inject previous agent contexts for the same task
+              if (taskId) {
+                try {
+                  const contexts = await window.deskerAPI.db.getAgentContexts(taskId);
+                  if (contexts.length > 0) {
+                    const contextSummary = contexts
+                      .map((ctx) => `[${ctx.agent_role}]: ${ctx.content}`)
+                      .join("\n\n");
+                    await new Promise((r) => setTimeout(r, 500));
+                    api.ai.writeHidden(
+                      sessionId,
+                      `The following is context from previous agents working on the same task. Use this to inform your work:\n\n${contextSummary}`
+                    );
+                  }
+                } catch {
+                  // ignore context fetch errors
+                }
+              }
+            }
+          }
+        }).catch((err: Error) => {
           term!.writeln(`\x1b[31m  [AI CLI 오류: ${err.message}]\x1b[0m`);
           term!.writeln(`\x1b[90m  셸 모드로 전환합니다...\x1b[0m`);
           api.pty.create(sessionId, { cols, rows });

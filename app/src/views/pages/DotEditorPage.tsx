@@ -129,24 +129,41 @@ export default function DotEditorPage() {
   };
 
   const handleExportPNG = () => {
+    const scale = gridSize <= 16 ? 16 : 8; // each pixel = 16px for small grids, 8px for larger
+    const outputSize = gridSize * scale;
     const c = document.createElement("canvas");
-    c.width = gridSize; c.height = gridSize;
+    c.width = outputSize;
+    c.height = outputSize;
     const ctx = c.getContext("2d")!;
+    // Fill background transparent
+    ctx.clearRect(0, 0, outputSize, outputSize);
     for (let y = 0; y < gridSize; y++)
       for (let x = 0; x < gridSize; x++)
-        if (pixels[y][x]) { ctx.fillStyle = pixels[y][x]!; ctx.fillRect(x, y, 1, 1); }
-    const link = document.createElement("a");
-    link.download = `dot-art-${gridSize}x${gridSize}.png`;
-    link.href = c.toDataURL();
-    link.click();
+        if (pixels[y][x]) {
+          ctx.fillStyle = pixels[y][x]!;
+          ctx.fillRect(x * scale, y * scale, scale, scale);
+        }
+    c.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dot-art-${gridSize}x${gridSize}.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
   };
 
   const handleExportJSON = () => {
-    const blob = new Blob([JSON.stringify({ gridSize, pixels }, null, 2)], { type: "application/json" });
-    const link = document.createElement("a");
-    link.download = `dot-art-${gridSize}x${gridSize}.json`;
-    link.href = URL.createObjectURL(blob);
-    link.click();
+    const name = `dot-art-${gridSize}x${gridSize}`;
+    const data = JSON.stringify({ name, gridSize, pixels }, null, 2);
+    const blob = new Blob([data], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${name}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleClear = () => {
@@ -160,7 +177,17 @@ export default function DotEditorPage() {
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result as string);
-        if (data.gridSize && data.pixels) { setGridSize(data.gridSize); setPixels(data.pixels); }
+        if (
+          typeof data.gridSize === "number" &&
+          Array.isArray(data.pixels) &&
+          data.pixels.length === data.gridSize &&
+          data.pixels.every((row: unknown) => Array.isArray(row) && (row as unknown[]).length === data.gridSize)
+        ) {
+          setGridSize(data.gridSize);
+          setPixels(data.pixels);
+        } else {
+          alert("유효하지 않은 JSON 구조입니다. { name, gridSize, pixels } 형식이어야 합니다.");
+        }
       } catch { alert("유효하지 않은 JSON 파일입니다."); }
     };
     reader.readAsText(file);

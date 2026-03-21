@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import { projectDb, taskDb, roomObjectDb } from "../services/db.service";
+import { projectDb, taskDb, roomObjectDb, taskTodoDb, agentContextDb, timetableBlockDb, habitDb } from "../services/db.service";
 
 export function registerDbHandlers(ipcMain: IpcMain) {
   // ── Projects ──
@@ -26,10 +26,66 @@ export function registerDbHandlers(ipcMain: IpcMain) {
 
   ipcMain.handle("db:tasks:remove", (_, id: string) => taskDb.remove(id));
 
+  // ── Task Todos ──
+  ipcMain.handle("db:taskTodos:getAll", (_, taskId: string) =>
+    taskTodoDb.getByTaskId(taskId)
+  );
+
+  ipcMain.handle("db:taskTodos:add", (_, t) => taskTodoDb.add(t));
+
+  ipcMain.handle("db:taskTodos:update", (_, id: string, updates) =>
+    taskTodoDb.update(id, updates)
+  );
+
+  ipcMain.handle("db:taskTodos:remove", (_, id: string) =>
+    taskTodoDb.remove(id)
+  );
+
+  // ── Agent Contexts ──
+  ipcMain.handle("db:agentContexts:save", (_, taskId: string, agentRole: string, content: string) =>
+    agentContextDb.save(taskId, agentRole, content)
+  );
+
+  ipcMain.handle("db:agentContexts:getByTaskId", (_, taskId: string) =>
+    agentContextDb.getByTaskId(taskId)
+  );
+
   // ── Room Objects ──
   ipcMain.handle("db:roomObjects:getAll", () => roomObjectDb.getAll());
 
   ipcMain.handle("db:roomObjects:save", (_, objects) =>
     roomObjectDb.save(objects)
+  );
+
+  // ── Timetable Blocks ──
+  ipcMain.handle("db:timetableBlocks:getByDate", (_, date: string) =>
+    timetableBlockDb.getByDate(date)
+  );
+
+  ipcMain.handle("db:timetableBlocks:saveBatch", (_, date: string, blocks) =>
+    timetableBlockDb.saveBatch(date, blocks)
+  );
+
+  ipcMain.handle("db:timetableBlocks:clearDate", (_, date: string) =>
+    timetableBlockDb.clearDate(date)
+  );
+
+  // ── Habits ──
+  ipcMain.handle("db:habits:getAll", () => habitDb.getAll());
+
+  ipcMain.handle("db:habits:add", (_, name: string) => habitDb.add(name));
+
+  ipcMain.handle("db:habits:remove", (_, id: string) => habitDb.remove(id));
+
+  ipcMain.handle("db:habits:reorder", (_, id: string, sortOrder: number) =>
+    habitDb.reorder(id, sortOrder)
+  );
+
+  ipcMain.handle("db:habitLogs:get", (_, weekStart: string, weekEnd: string) =>
+    habitDb.getLogs(weekStart, weekEnd)
+  );
+
+  ipcMain.handle("db:habitLogs:toggle", (_, habitId: string, date: string) =>
+    habitDb.toggleLog(habitId, date)
   );
 }

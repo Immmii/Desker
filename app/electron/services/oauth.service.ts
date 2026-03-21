@@ -125,23 +125,8 @@ export const oauthService = {
     const config = OAUTH_CONFIGS[service];
     if (!config) return Promise.reject(new Error(`지원하지 않는 서비스: ${service}`));
 
-    // ── Client ID가 없으면 시뮬레이션 모드 (데모) ──
     if (!config.clientId) {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          mcpConnectionDb.upsert({
-            service,
-            access_token: `demo_${crypto.randomUUID()}`,
-            token_type: "Bearer",
-            user_email: `user@${service.toLowerCase().replace(/\s+/g, "")}.com`,
-          });
-          resolve({
-            success: true,
-            service,
-            email: `user@${service.toLowerCase().replace(/\s+/g, "")}.com`,
-          });
-        }, 800); // 짧은 딜레이로 연결 애니메이션 보이게
-      });
+      return Promise.reject(new Error(`${service}: OAuth Client ID가 설정되지 않았습니다. 토큰 방식으로 연결하세요.`));
     }
 
     // ── 실제 OAuth 플로우 ──

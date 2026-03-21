@@ -1,7 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useAppVM } from "../../viewmodels/app.vm";
 import { useProjectVM } from "../../viewmodels/project.vm";
-import type { ProjectType } from "../../types/models";
+import type { ProjectType, Project } from "../../types/models";
 import Sidebar from "./Sidebar";
 import WorkspacePage from "../pages/WorkspacePage";
 import DotEditorPage from "../pages/DotEditorPage";
@@ -9,6 +24,47 @@ import TasksPage from "../pages/TasksPage";
 import TerminalPage from "../pages/TerminalPage";
 import PluginsPage from "../pages/PluginsPage";
 import SettingsPage from "../pages/SettingsPage";
+
+// ── Sortable Project Item ──
+function SortableProjectItem({
+  project,
+  isSelected,
+  onSelect,
+  onContextMenu,
+}: {
+  project: Project;
+  isSelected: boolean;
+  onSelect: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    padding: "7px 12px",
+    fontSize: 15,
+    textAlign: "left" as const,
+    borderRadius: 6,
+    cursor: "grab",
+  };
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onSelect}
+      onContextMenu={onContextMenu}
+      className={`transition-colors ${
+        isSelected ? "bg-accent/15 text-accent font-medium" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+      }`}
+    >
+      {project.icon} {project.name}
+    </button>
+  );
+}
 
 const PRESET_ICONS = ["📁", "🎓", "💻", "📔", "🎨", "🏠", "🎮", "📊", "🧪", "🌱", "🎵", "📚"];
 const PRESET_COLORS = ["#6c5ce7", "#00b894", "#fdcb6e", "#e17055", "#74b9ff", "#fd79a8", "#55efc4", "#2d3436"];
@@ -44,7 +100,7 @@ function ProjectAddModal({
   return (
     <div
       style={{
-        position: "fixed", inset: 0, zIndex: 100,
+        position: "fixed", inset: 0, zIndex: 300,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >
@@ -252,7 +308,16 @@ function ProjectPanel({
   width: number;
   onResizeStart: (e: React.MouseEvent) => void;
 }) {
-  const { projects, selectedProjectId, selectProject } = useProjectVM();
+  const { projects, selectedProjectId, selectProject, reorderProjects } = useProjectVM();
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const handleProjectDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = projects.findIndex((p) => p.id === active.id);
+    const newIdx = projects.findIndex((p) => p.id === over.id);
+    if (oldIdx === -1 || newIdx === -1) return;
+    reorderProjects(arrayMove(projects, oldIdx, newIdx));
+  };
   const currentPage = useAppVM((s) => s.currentPage);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editProject, setEditProject] = useState<{
@@ -262,7 +327,7 @@ function ProjectPanel({
     x: number; y: number; projectId: string;
   } | null>(null);
 
-  if (currentPage !== "workspace" && currentPage !== "tasks") return null;
+  if (currentPage !== "tasks") return null;
 
   if (collapsed) return null;
 
@@ -283,7 +348,7 @@ function ProjectPanel({
       <div
         style={{
           width, minWidth: 180, maxWidth: 400, position: "relative",
-          borderTopLeftRadius: 14,
+          borderTopLeftRadius: 0,
           background: "var(--color-bg-primary)",
           marginTop: 38,
         }}
@@ -309,19 +374,19 @@ function ProjectPanel({
             📁 전체 태스크
           </button>
 
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => selectProject(p.id)}
-              onContextMenu={(e) => handleContextMenu(e, p.id)}
-              style={{ padding: "7px 12px", fontSize: 15, textAlign: "left", borderRadius: 6 }}
-              className={`cursor-pointer transition-colors ${
-                selectedProjectId === p.id ? "bg-accent/15 text-accent font-medium" : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-              }`}
-            >
-              {p.icon} {p.name}
-            </button>
-          ))}
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleProjectDragEnd}>
+            <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+              {projects.map((p) => (
+                <SortableProjectItem
+                  key={p.id}
+                  project={p}
+                  isSelected={selectedProjectId === p.id}
+                  onSelect={() => selectProject(p.id)}
+                  onContextMenu={(e) => handleContextMenu(e, p.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
 
           <button
             onClick={() => setShowAddModal(true)}
@@ -408,7 +473,7 @@ function Titlebar({
   panelWidth: number;
 }) {
   const currentPage = useAppVM((s) => s.currentPage);
-  const showPanel = currentPage === "workspace" || currentPage === "tasks";
+  const showPanel = currentPage === "tasks";
   const sidebarW = 84;
   const [focused, setFocused] = useState(true);
 
@@ -450,6 +515,17 @@ function Titlebar({
             <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--color-text-secondary)", opacity: 0.3 }} />
           </div>
         )}
+        {/* Desker title — centered */}
+        <div style={{
+          position: "absolute", left: 0, right: 0, top: 0, height: 38,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          pointerEvents: "none",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: 1.5, opacity: 0.35 }} className="text-text-secondary">
+            Desker
+          </span>
+        </div>
+
         {showPanel && (
           <button
             onClick={onToggle}
@@ -529,7 +605,7 @@ export default function AppShell() {
         width={panelWidth}
         onResizeStart={handleResizeStart}
       />
-      <main className="flex-1 min-w-0 overflow-hidden" style={{ marginTop: 38, borderTopLeftRadius: 14, background: "var(--color-bg-primary)" }}>
+      <main className="flex-1 min-w-0 overflow-hidden" style={{ marginTop: 38, borderTopLeftRadius: 0, background: "var(--color-bg-primary)" }}>
         <PageContent />
       </main>
     </div>

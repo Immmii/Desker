@@ -6,6 +6,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
@@ -21,8 +22,9 @@ import { useProjectVM } from "../../../viewmodels/project.vm";
 import { useSessionVM } from "../../../viewmodels/session.vm";
 import { useAppVM } from "../../../viewmodels/app.vm";
 import type { Task, TaskStatus, TaskPriority } from "../../../types/models";
-import type { TerminalMode, AiModel } from "../../../viewmodels/session.vm";
+import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../../viewmodels/session.vm";
 import StartSessionModal from "../../shared/StartSessionModal";
+import TaskDetailModal from "../../shared/TaskDetailModal";
 
 const COLUMNS: { status: TaskStatus; label: string; color: string; dotColor: string }[] = [
   { status: "todo", label: "시작 전", color: "text-text-secondary", dotColor: "bg-text-secondary" },
@@ -78,7 +80,7 @@ function KanbanEditForm({ task, onClose }: { task: Task; onClose: () => void }) 
 }
 
 // ── Sortable Task Card ──
-function SortableTaskCard({ task }: { task: Task }) {
+function SortableTaskCard({ task, onOpenDetail }: { task: Task; onOpenDetail?: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -88,13 +90,13 @@ function SortableTaskCard({ task }: { task: Task }) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCardContent task={task} />
+      <TaskCardContent task={task} onOpenDetail={onOpenDetail} />
     </div>
   );
 }
 
 // ── Card Content (shared between sortable + overlay) ──
-function TaskCardContent({ task }: { task: Task }) {
+function TaskCardContent({ task, onOpenDetail }: { task: Task; onOpenDetail?: (id: string) => void }) {
   const { projects, removeTask } = useProjectVM();
   const createSession = useSessionVM((s) => s.createSession);
   const setPage = useAppVM((s) => s.setCurrentPage);
@@ -113,8 +115,8 @@ function TaskCardContent({ task }: { task: Task }) {
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  const handleStart = (mode: TerminalMode, aiModel?: AiModel) => {
-    createSession({ taskId: task.id, taskTitle: task.title, projectName: project?.name ?? "프로젝트", projectIcon: project?.icon ?? "📁", mode, aiModel });
+  const handleStart = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
+    createSession({ taskId: task.id, taskTitle: task.title, projectName: project?.name ?? "프로젝트", projectIcon: project?.icon ?? "📁", mode, aiModel, agentRole, agentEnv });
     setPage("terminal");
     setShowStartModal(false);
   };
@@ -123,6 +125,7 @@ function TaskCardContent({ task }: { task: Task }) {
 
   return (
     <div
+      onClick={() => onOpenDetail?.(task.id)}
       style={{ padding: "14px 16px", borderRadius: 10, marginBottom: 6, cursor: "grab", position: "relative" }}
       className="bg-bg-secondary border border-border hover:border-accent/30 transition-colors group"
     >
@@ -171,7 +174,7 @@ function QuickAddTask({ status }: { status: TaskStatus }) {
   const handleSubmit = () => {
     if (!title.trim()) return;
     const projectId = selectedProjectId || projects[0]?.id || "p1";
-    addTask({ projectId, title: title.trim(), description: "", status, priority: "medium" as TaskPriority, dueDate: null });
+    addTask({ projectId, title: title.trim(), description: "", status, priority: "medium" as TaskPriority, dueDate: null, startDate: null });
     setTitle("");
     setOpen(false);
   };
@@ -196,10 +199,11 @@ function QuickAddTask({ status }: { status: TaskStatus }) {
 }
 
 // ── Column droppable ──
-function KanbanColumn({ status, label, color, dotColor, tasks: colTasks, isOver }: {
-  status: TaskStatus; label: string; color: string; dotColor: string; tasks: Task[]; isOver: boolean;
+function KanbanColumn({ status, label, color, dotColor, tasks: colTasks, isOver, onOpenDetail }: {
+  status: TaskStatus; label: string; color: string; dotColor: string; tasks: Task[]; isOver: boolean; onOpenDetail: (id: string) => void;
 }) {
   const taskIds = useMemo(() => colTasks.map((t) => t.id), [colTasks]);
+  const { setNodeRef } = useDroppable({ id: status });
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -211,6 +215,7 @@ function KanbanColumn({ status, label, color, dotColor, tasks: colTasks, isOver 
 
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
         <div
+          ref={setNodeRef}
           style={{
             flex: 1, overflowY: "auto", padding: 4, borderRadius: 10, minHeight: 60,
             border: isOver ? "2px dashed var(--color-accent)" : "2px dashed transparent",
@@ -219,7 +224,7 @@ function KanbanColumn({ status, label, color, dotColor, tasks: colTasks, isOver 
           className={isOver ? "bg-accent/5" : ""}
         >
           {colTasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} />
+            <SortableTaskCard key={task.id} task={task} onOpenDetail={onOpenDetail} />
           ))}
           {colTasks.length === 0 && (
             <div style={{ padding: 20, textAlign: "center", fontSize: 13, borderRadius: 10 }} className="text-text-secondary/30">
@@ -238,7 +243,9 @@ function KanbanColumn({ status, label, color, dotColor, tasks: colTasks, isOver 
 export default function KanbanBoard() {
   const { tasks, updateTaskStatus, reorderTasks, selectedProjectId } = useProjectVM();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [originalStatus, setOriginalStatus] = useState<TaskStatus | null>(null);
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -267,6 +274,7 @@ export default function KanbanBoard() {
   const handleDragStart = (event: DragStartEvent) => {
     const task = filteredTasks.find((t) => t.id === event.active.id);
     setActiveTask(task ?? null);
+    setOriginalStatus(task?.status ?? null);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -302,41 +310,35 @@ export default function KanbanBoard() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    const savedOriginalStatus = originalStatus;
     setActiveTask(null);
+    setOriginalStatus(null);
     setOverCol(null);
 
     if (!over) return;
 
-    const activeCol = findColumn(active.id as string);
-    const overCol = findColumn(over.id as string);
+    const currentCol = findColumn(active.id as string);
+    const overColTarget = findColumn(over.id as string);
 
-    if (!activeCol || !overCol) return;
+    if (!currentCol || !overColTarget) return;
 
     // Same column reorder
-    if (activeCol === overCol && active.id !== over.id) {
-      const colItems = tasks.filter((t) => t.status === activeCol);
+    if (currentCol === overColTarget && active.id !== over.id) {
+      const colItems = tasks.filter((t) => t.status === currentCol);
       const oldIndex = colItems.findIndex((t) => t.id === active.id);
       const newIndex = colItems.findIndex((t) => t.id === over.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
         const reordered = arrayMove(colItems, oldIndex, newIndex);
-        const others = tasks.filter((t) => t.status !== activeCol);
+        const others = tasks.filter((t) => t.status !== currentCol);
         reorderTasks([...others, ...reordered]);
       }
     }
 
-    // Cross-column: persist the status change to DB
-    const task = tasks.find((t) => t.id === active.id);
-    if (task) {
-      const finalCol = findColumn(active.id as string);
-      if (finalCol && finalCol !== activeCol) {
-        // Already visually moved in handleDragOver, now persist
-      }
-      // Always persist current status
-      const currentTask = tasks.find((t) => t.id === active.id);
-      if (currentTask && currentTask.status !== activeCol) {
-        updateTaskStatus(currentTask.id, currentTask.status);
-      }
+    // Persist status change to DB if it changed from original
+    const currentTask = tasks.find((t) => t.id === active.id);
+    if (currentTask && savedOriginalStatus && currentTask.status !== savedOriginalStatus) {
+      updateTaskStatus(currentTask.id, currentTask.status);
     }
   };
 
@@ -358,6 +360,7 @@ export default function KanbanBoard() {
             dotColor={col.dotColor}
             tasks={tasksByCol[col.status]}
             isOver={overCol === col.status}
+            onOpenDetail={setDetailTaskId}
           />
         ))}
       </div>
@@ -369,6 +372,10 @@ export default function KanbanBoard() {
           </div>
         ) : null}
       </DragOverlay>
+
+      {detailTaskId && (
+        <TaskDetailModal taskId={detailTaskId} onClose={() => setDetailTaskId(null)} />
+      )}
     </DndContext>
   );
 }

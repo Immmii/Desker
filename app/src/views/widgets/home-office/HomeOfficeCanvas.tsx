@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppVM } from "../../../viewmodels/app.vm";
 import { useProjectVM } from "../../../viewmodels/project.vm";
 import { useSessionVM } from "../../../viewmodels/session.vm";
+import { getAgentPreset } from "../../../viewmodels/session.vm";
 import { useDotArtVM } from "../../../viewmodels/dotart.vm";
 
 // ── Endesga 32 inspired warm cozy palette ──
@@ -232,7 +233,7 @@ function drawJournal(ctx: CanvasRenderingContext2D, x: number, y: number) {
   pxRect(ctx, x + 11, y + 18, 1, 1, C.red);
 }
 
-function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: string, animFrame: number) {
+function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: string, animFrame: number, shirtColor?: string, label?: string) {
   const s = 2;
   // Hair
   ctx.fillStyle = C.hair;
@@ -252,13 +253,13 @@ function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: s
   ctx.fillStyle = C.skinShadow;
   ctx.fillRect(x + 3 * s, y + 3 * s, s, s);
   // Shirt
-  ctx.fillStyle = C.shirt;
+  ctx.fillStyle = shirtColor ?? C.shirt;
   for (const [px, py] of [[0,4],[1,4],[2,4],[3,4],[4,4],[5,4],[1,5],[2,5],[3,5],[4,5]]) {
     ctx.fillRect(x + px * s, y + py * s, s, s);
   }
   // Arms - shift down by 1px when working on alternate frames (typing)
   const armShift = state === "working" && animFrame === 1 ? 1 : 0;
-  ctx.fillStyle = C.shirtShadow;
+  ctx.fillStyle = shirtColor ? `${shirtColor}cc` : C.shirtShadow;
   for (const [px, py] of [[1,6],[2,6],[3,6],[4,6]]) {
     ctx.fillRect(x + px * s, y + py * s + armShift, s, s);
   }
@@ -287,6 +288,14 @@ function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: s
       pxRect(ctx, bx + 3, by + 2, 6, 1, C.mid);
       pxRect(ctx, bx + 5, by + 4, 4, 1, C.mid);
     }
+  }
+
+  // Role label below character
+  if (label) {
+    ctx.font = "bold 6px monospace";
+    ctx.fillStyle = shirtColor ?? C.accent;
+    ctx.textAlign = "center";
+    ctx.fillText(label, x + 3 * s, y + 9 * s);
   }
 }
 
@@ -673,8 +682,10 @@ export default function HomeOfficeCanvas() {
     return () => clearInterval(timer);
   }, []);
 
-  // Derive agent state from sessions
+  // Sessions for multi-agent rendering
   const sessions = useSessionVM((s) => s.sessions);
+  const activeSessionId = useSessionVM((s) => s.activeSessionId);
+  const setActiveSession = useSessionVM((s) => s.setActiveSession);
   const agentState: string = sessions.some((s) => s.state === "working")
     ? "working"
     : sessions.some((s) => s.state === "error")
@@ -835,8 +846,30 @@ export default function HomeOfficeCanvas() {
         }
       }
 
-      // ── Agent ──
-      drawAgent(ctx, 126, 70, agentState, animFrame);
+      // ── Agents (multi-agent) ──
+      const agentSessions = sessions.filter((s) => s.state === "working" || s.state === "idle");
+      if (agentSessions.length === 0) {
+        // No sessions: draw idle default agent
+        drawAgent(ctx, 126, 70, "idle", animFrame);
+      } else {
+        // Position agents in a row, max 6
+        const maxAgents = Math.min(agentSessions.length, 6);
+        const startX = 100;
+        const spacing = 28;
+        for (let i = 0; i < maxAgents; i++) {
+          const s = agentSessions[i];
+          const preset = s.agentRole ? getAgentPreset(s.agentRole) : null;
+          const ax = startX + i * spacing;
+          const ay = 70;
+          drawAgent(
+            ctx, ax, ay,
+            s.state,
+            animFrame,
+            preset?.color,
+            preset ? preset.icon : undefined,
+          );
+        }
+      }
 
       // ── Custom Dot Art objects ──
       if (dotArts.length > 0) {
@@ -949,6 +982,29 @@ export default function HomeOfficeCanvas() {
         handleObjectClick(currentDragObj);
       }
     }
+
+    // Check if clicked on an agent character → navigate to terminal
+    if (downPos) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        const agentSess = sessions.filter((ss) => ss.state === "working" || ss.state === "idle");
+        const maxA = Math.min(agentSess.length, 6);
+        for (let i = 0; i < maxA; i++) {
+          const ax = 100 + i * 28;
+          const ay = 70;
+          if (cx >= ax && cx <= ax + 18 && cy >= ay && cy <= ay + 24) {
+            setActiveSession(agentSess[i].id);
+            setCurrentPage("terminal");
+            return;
+          }
+        }
+      }
+    }
   };
 
   // Add object from catalog
@@ -978,15 +1034,27 @@ export default function HomeOfficeCanvas() {
       />
 
 
-      {/* Catalog button (top-right) */}
+      {/* Catalog button (top-left) */}
       <button
         onClick={() => setShowCatalog((prev) => !prev)}
-        className="absolute top-2 right-3 px-2.5 py-1 rounded-md text-xs
-          bg-surface-secondary/80 hover:bg-surface-secondary text-text-primary
-          border border-border/40 hover:border-border/70
-          backdrop-blur-sm transition-all cursor-pointer select-none"
+        style={{
+          width: 32, height: 32, borderRadius: 8,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+        className={`absolute top-2 left-3
+          backdrop-blur-sm transition-all cursor-pointer select-none
+          ${showCatalog
+            ? "bg-accent/20 border border-accent/50"
+            : "bg-surface-secondary/70 hover:bg-surface-secondary border border-border/40 hover:border-border/70"
+          }`}
       >
-        🪑 가구 배치
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showCatalog ? "var(--color-accent)" : "var(--color-text-secondary)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          {/* Grid/layout icon representing furniture arrangement */}
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="4" rx="1" />
+          <rect x="14" y="11" width="7" height="10" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+        </svg>
       </button>
 
       {/* Bottom-right agent status */}
@@ -1023,35 +1091,60 @@ export default function HomeOfficeCanvas() {
 
       {/* ── Object Catalog Drawer ── */}
       <div
-        className={`absolute top-0 right-0 h-full w-56
-          bg-surface-primary/95 border-l border-border/50
-          backdrop-blur-md shadow-2xl
-          transition-transform duration-300 ease-in-out
-          ${showCatalog ? "translate-x-0" : "translate-x-full"}
-          flex flex-col`}
+        style={{
+          position: "absolute", top: 0, left: 0, height: "100%", width: 220,
+          display: "flex", flexDirection: "column",
+          background: "var(--color-bg-secondary)",
+          borderRight: "1px solid var(--color-border)",
+          boxShadow: showCatalog ? "4px 0 20px rgba(0,0,0,0.15)" : "none",
+          transform: showCatalog ? "translateX(0)" : "translateX(-100%)",
+          transition: "transform 0.25s ease-in-out",
+        }}
       >
-        {/* Drawer header */}
-        <div className="flex items-center justify-between px-3 py-3 border-b border-border/40">
-          <span className="text-sm font-semibold text-text-primary">🪑 가구 배치</span>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "12px 14px", borderBottom: "1px solid var(--color-border)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-primary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="4" rx="1" />
+              <rect x="14" y="11" width="7" height="10" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 600 }} className="text-text-primary">가구 배치</span>
+          </div>
           <button
             onClick={() => setShowCatalog(false)}
-            className="text-text-secondary hover:text-text-primary text-sm cursor-pointer w-5 h-5 flex items-center justify-center"
+            style={{
+              width: 24, height: 24, borderRadius: 6, border: "none",
+              background: "transparent", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, color: "var(--color-text-secondary)",
+            }}
+            className="hover:bg-bg-hover"
           >
             ✕
           </button>
         </div>
 
         {/* Category tabs */}
-        <div className="flex px-2 pt-2 gap-1">
+        <div style={{ display: "flex", gap: 4, padding: "8px 10px" }}>
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
               onClick={() => setCatalogCategory(cat)}
-              className={`flex-1 py-1 rounded-md text-xs cursor-pointer transition-colors
-                ${catalogCategory === cat
-                  ? "bg-accent/20 text-accent font-semibold border border-accent/30"
-                  : "text-text-secondary hover:text-text-primary hover:bg-surface-secondary/50 border border-transparent"
-                }`}
+              style={{
+                flex: 1, padding: "5px 0", borderRadius: 6, fontSize: 12,
+                border: catalogCategory === cat ? "1px solid var(--color-accent)" : "1px solid transparent",
+                background: catalogCategory === cat ? "var(--color-accent-alpha, rgba(116,185,255,0.1))" : "transparent",
+                color: catalogCategory === cat ? "var(--color-accent)" : "var(--color-text-secondary)",
+                fontWeight: catalogCategory === cat ? 600 : 400,
+                cursor: "pointer", fontFamily: "Pretendard, sans-serif",
+                transition: "all 0.15s",
+              }}
+              className={catalogCategory === cat ? "" : "hover:bg-bg-hover"}
             >
               {cat}
             </button>
@@ -1059,29 +1152,40 @@ export default function HomeOfficeCanvas() {
         </div>
 
         {/* Item list */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
           {filteredCatalog.map((item) => (
             <button
               key={item.id}
               onClick={() => addFromCatalog(item)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg
-                hover:bg-surface-secondary/60 transition-colors cursor-pointer
-                border border-transparent hover:border-border/30 text-left"
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 8px", borderRadius: 8, marginBottom: 2,
+                border: "1px solid transparent", background: "transparent",
+                cursor: "pointer", textAlign: "left", transition: "all 0.15s",
+              }}
+              className="hover:bg-bg-hover hover:border-border/30"
             >
-              <div className="w-10 h-10 rounded-md bg-black/30 flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <div style={{
+                width: 36, height: 36, borderRadius: 6, flexShrink: 0,
+                background: "var(--color-bg-tertiary)", display: "flex",
+                alignItems: "center", justifyContent: "center", overflow: "hidden",
+              }}>
                 <CatalogPreview id={item.id} />
               </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-text-primary truncate">{item.label}</span>
-                <span className="text-[10px] text-text-secondary/60">{item.category}</span>
+              <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 500 }} className="text-text-primary">{item.label}</span>
+                <span style={{ fontSize: 10 }} className="text-text-secondary/50">{item.category}</span>
               </div>
             </button>
           ))}
         </div>
 
-        {/* Drawer footer hint */}
-        <div className="px-3 py-2 border-t border-border/40 text-[10px] text-text-secondary/50">
-          클릭하여 방에 추가 · 드래그하여 이동
+        {/* Footer */}
+        <div style={{
+          padding: "8px 14px", borderTop: "1px solid var(--color-border)",
+          fontSize: 10,
+        }} className="text-text-secondary/40">
+          클릭하여 추가 · 드래그하여 이동
         </div>
       </div>
     </div>

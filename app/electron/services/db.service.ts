@@ -79,6 +79,63 @@ function runMigrations() {
   try {
     db.exec("ALTER TABLE dot_arts ADD COLUMN is_preset INTEGER NOT NULL DEFAULT 0");
   } catch { /* column already exists */ }
+  try {
+    db.exec("ALTER TABLE tasks ADD COLUMN start_date TEXT");
+  } catch { /* column already exists */ }
+
+  // task_todos table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS task_todos (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+  `);
+
+  // agent_contexts table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_contexts (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      agent_role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+  `);
+
+  // timetable_blocks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS timetable_blocks (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      cell_key TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      color TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
+
+  // habits + habit_logs tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS habits (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS habit_logs (
+      id TEXT PRIMARY KEY,
+      habit_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE,
+      UNIQUE(habit_id, date)
+    );
+  `);
 }
 
 function seedDefaults() {
@@ -151,12 +208,12 @@ export const taskDb = {
     return db.prepare("SELECT * FROM tasks ORDER BY created_at DESC").all();
   },
 
-  add: (t: { project_id: string; title: string; description: string; status: string; priority: string; due_date: string | null }) => {
+  add: (t: { project_id: string; title: string; description: string; status: string; priority: string; due_date: string | null; start_date?: string | null }) => {
     const id = genId();
     const now = new Date().toISOString();
     db.prepare(
-      "INSERT INTO tasks (id, project_id, title, description, status, priority, due_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-    ).run(id, t.project_id, t.title, t.description, t.status, t.priority, t.due_date, now);
+      "INSERT INTO tasks (id, project_id, title, description, status, priority, due_date, start_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(id, t.project_id, t.title, t.description, t.status, t.priority, t.due_date, t.start_date ?? null, now);
     return db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   },
 
@@ -352,6 +409,47 @@ export const dotArtDb = {
   },
 };
 
+// ── Task Todos ──
+export const taskTodoDb = {
+  getByTaskId: (taskId: string) =>
+    db.prepare("SELECT * FROM task_todos WHERE task_id = ? ORDER BY sort_order ASC").all(taskId),
+
+  add: (t: { task_id: string; text: string }) => {
+    const id = genId();
+    const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) as m FROM task_todos WHERE task_id = ?").get(t.task_id) as { m: number };
+    db.prepare(
+      "INSERT INTO task_todos (id, task_id, text, done, sort_order) VALUES (?, ?, ?, 0, ?)"
+    ).run(id, t.task_id, t.text, maxOrder.m + 1);
+    return db.prepare("SELECT * FROM task_todos WHERE id = ?").get(id);
+  },
+
+  update: (id: string, updates: Record<string, unknown>) => {
+    const fields = Object.keys(updates);
+    const sets = fields.map((f) => `${f} = ?`).join(", ");
+    const values = fields.map((f) => updates[f]);
+    db.prepare(`UPDATE task_todos SET ${sets} WHERE id = ?`).run(...values, id);
+  },
+
+  remove: (id: string) => {
+    db.prepare("DELETE FROM task_todos WHERE id = ?").run(id);
+  },
+};
+
+// ── Agent Contexts ──
+export const agentContextDb = {
+  save: (taskId: string, agentRole: string, content: string) => {
+    const id = genId();
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO agent_contexts (id, task_id, agent_role, content, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).run(id, taskId, agentRole, content, now);
+    return db.prepare("SELECT * FROM agent_contexts WHERE id = ?").get(id);
+  },
+
+  getByTaskId: (taskId: string) =>
+    db.prepare("SELECT * FROM agent_contexts WHERE task_id = ? ORDER BY created_at ASC").all(taskId),
+};
+
 // ── MCP Connections ──
 export const mcpConnectionDb = {
   getAll: () => db.prepare("SELECT * FROM mcp_connections ORDER BY connected_at DESC").all(),
@@ -413,5 +511,69 @@ export const oauthCredentialDb = {
 
   remove: (service: string) => {
     db.prepare("DELETE FROM oauth_credentials WHERE service = ?").run(service);
+  },
+};
+
+// ── Timetable Blocks ──
+export const timetableBlockDb = {
+  getByDate: (date: string) =>
+    db.prepare("SELECT * FROM timetable_blocks WHERE date = ?").all(date),
+
+  saveBatch: (date: string, blocks: { cell_key: string; task_id: string; color: string }[]) => {
+    const tx = db.transaction(() => {
+      db.prepare("DELETE FROM timetable_blocks WHERE date = ?").run(date);
+      const insert = db.prepare(
+        "INSERT INTO timetable_blocks (id, date, cell_key, task_id, color, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      );
+      const now = new Date().toISOString();
+      for (const b of blocks) {
+        insert.run(genId(), date, b.cell_key, b.task_id, b.color, now);
+      }
+    });
+    tx();
+  },
+
+  clearDate: (date: string) => {
+    db.prepare("DELETE FROM timetable_blocks WHERE date = ?").run(date);
+  },
+};
+
+// ── Habits ──
+export const habitDb = {
+  getAll: () =>
+    db.prepare("SELECT * FROM habits ORDER BY sort_order ASC").all(),
+
+  add: (name: string) => {
+    const id = genId();
+    const now = new Date().toISOString();
+    const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) as m FROM habits").get() as { m: number };
+    db.prepare(
+      "INSERT INTO habits (id, name, sort_order, created_at) VALUES (?, ?, ?, ?)"
+    ).run(id, name, maxOrder.m + 1, now);
+    return db.prepare("SELECT * FROM habits WHERE id = ?").get(id);
+  },
+
+  remove: (id: string) => {
+    db.prepare("DELETE FROM habits WHERE id = ?").run(id);
+  },
+
+  reorder: (id: string, sortOrder: number) => {
+    db.prepare("UPDATE habits SET sort_order = ? WHERE id = ?").run(sortOrder, id);
+  },
+
+  getLogs: (weekStart: string, weekEnd: string) =>
+    db.prepare("SELECT * FROM habit_logs WHERE date >= ? AND date <= ?").all(weekStart, weekEnd),
+
+  toggleLog: (habitId: string, date: string) => {
+    const existing = db.prepare("SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?").get(habitId, date) as { id: string; done: number } | undefined;
+    if (existing) {
+      const newDone = existing.done ? 0 : 1;
+      db.prepare("UPDATE habit_logs SET done = ? WHERE id = ?").run(newDone, existing.id);
+      return newDone;
+    } else {
+      const id = genId();
+      db.prepare("INSERT INTO habit_logs (id, habit_id, date, done) VALUES (?, ?, ?, 1)").run(id, habitId, date);
+      return 1;
+    }
   },
 };
