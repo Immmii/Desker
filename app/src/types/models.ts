@@ -21,7 +21,16 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  startDate: string | null;
   createdAt: string;
+}
+
+export interface TodoItem {
+  id: string;
+  taskId: string;
+  text: string;
+  done: boolean;
+  sortOrder: number;
 }
 
 export type SessionState = "idle" | "working" | "error" | "completed";

@@ -23,6 +23,7 @@ function toTask(row: Record<string, unknown>): Task {
     status: row.status as TaskStatus,
     priority: row.priority as Task["priority"],
     dueDate: (row.due_date as string | null) ?? null,
+    startDate: (row.start_date as string | null) ?? null,
     createdAt: row.created_at as string,
   };
 }
@@ -50,6 +51,7 @@ interface ProjectViewModel {
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>;
   removeTask: (id: string) => Promise<void>;
   reorderTasks: (reordered: Task[]) => void;
+  reorderProjects: (reordered: Project[]) => void;
 }
 
 export const useProjectVM = create<ProjectViewModel>((set, get) => ({
@@ -126,6 +128,7 @@ export const useProjectVM = create<ProjectViewModel>((set, get) => ({
       status: task.status,
       priority: task.priority,
       due_date: task.dueDate,
+      start_date: task.startDate ?? null,
     });
     const created = toTask(row as unknown as Record<string, unknown>);
     set((s) => ({ tasks: [created, ...s.tasks] }));
@@ -138,6 +141,7 @@ export const useProjectVM = create<ProjectViewModel>((set, get) => ({
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
+    if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
     if (updates.projectId !== undefined) dbUpdates.project_id = updates.projectId;
 
     await window.deskerAPI.db.updateTask(taskId, dbUpdates);
@@ -160,5 +164,9 @@ export const useProjectVM = create<ProjectViewModel>((set, get) => ({
 
   reorderTasks: (reordered) => {
     set({ tasks: reordered });
+  },
+
+  reorderProjects: (reordered) => {
+    set({ projects: reordered });
   },
 }));
