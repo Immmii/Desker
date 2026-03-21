@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import path from "path";
 import { initDatabase } from "./services/db.service";
 import { registerDbHandlers } from "./ipc/db.ipc";
@@ -88,6 +88,10 @@ app.whenReady().then(() => {
     }
   });
   ipcMain.handle("window:close", () => mainWindow?.close());
+  ipcMain.handle("window:openExternal", (_, url: string) => shell.openExternal(url));
+  ipcMain.handle("window:setAutoLaunch", (_, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+  });
 
   createWindow();
 

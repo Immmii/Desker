@@ -2,9 +2,15 @@ import { create } from "zustand";
 
 type ThemeMode = "dark" | "light" | "system";
 
-interface ThemeState {
+interface SettingsState {
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
+  nickname: string;
+  setNickname: (name: string) => void;
+  notifications: boolean;
+  setNotifications: (enabled: boolean) => void;
+  autoLaunch: boolean;
+  setAutoLaunch: (enabled: boolean) => void;
 }
 
 function getEffectiveTheme(mode: ThemeMode): "dark" | "light" {
@@ -20,11 +26,31 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.dataset.theme = getEffectiveTheme(mode);
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
+const STORAGE_KEY_NICKNAME = "desker:nickname";
+const STORAGE_KEY_NOTIFICATIONS = "desker:notifications";
+const STORAGE_KEY_AUTOLAUNCH = "desker:autoLaunch";
+
+export const useSettingsStore = create<SettingsState>((set) => ({
   mode: "light",
   setMode: (mode) => {
     applyTheme(mode);
     set({ mode });
+  },
+  nickname: localStorage.getItem(STORAGE_KEY_NICKNAME) ?? "",
+  setNickname: (name) => {
+    localStorage.setItem(STORAGE_KEY_NICKNAME, name);
+    set({ nickname: name });
+  },
+  notifications: localStorage.getItem(STORAGE_KEY_NOTIFICATIONS) !== "false",
+  setNotifications: (enabled) => {
+    localStorage.setItem(STORAGE_KEY_NOTIFICATIONS, String(enabled));
+    set({ notifications: enabled });
+  },
+  autoLaunch: localStorage.getItem(STORAGE_KEY_AUTOLAUNCH) === "true",
+  setAutoLaunch: (enabled) => {
+    localStorage.setItem(STORAGE_KEY_AUTOLAUNCH, String(enabled));
+    window.deskerAPI.window.setAutoLaunch(enabled);
+    set({ autoLaunch: enabled });
   },
 }));
 
@@ -73,7 +99,7 @@ const THEME_OPTIONS = [
 ];
 
 export default function SettingsPage() {
-  const { mode, setMode } = useThemeStore();
+  const { mode, setMode, nickname, setNickname, notifications, setNotifications, autoLaunch, setAutoLaunch } = useSettingsStore();
 
   return (
     <div style={{ padding: "28px 32px" }} className="h-full overflow-y-auto">
@@ -108,6 +134,31 @@ export default function SettingsPage() {
           </p>
         </section>
 
+        {/* Nickname */}
+        <section>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }} className="text-text-primary">
+            닉네임
+          </h3>
+          <div
+            style={{ padding: "14px 18px", borderRadius: 12 }}
+            className="bg-bg-secondary border border-border"
+          >
+            <p style={{ fontSize: 13, marginBottom: 8 }} className="text-text-secondary">
+              홈 화면 인사말에 표시됩니다
+            </p>
+            <input
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="닉네임을 입력하세요"
+              style={{
+                padding: "10px 14px", borderRadius: 10, fontSize: 15, width: "100%", outline: "none",
+                border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
+                color: "var(--color-text-primary)", fontFamily: "Pretendard, sans-serif",
+              }}
+            />
+          </div>
+        </section>
+
         {/* General */}
         <section>
           <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }} className="text-text-primary">
@@ -122,8 +173,11 @@ export default function SettingsPage() {
                 <p style={{ fontSize: 15 }} className="text-text-primary">알림</p>
                 <p style={{ fontSize: 13, marginTop: 2 }} className="text-text-secondary">태스크 마감일 알림</p>
               </div>
-              <div className="w-11 h-6 bg-accent rounded-full relative cursor-pointer">
-                <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5" />
+              <div
+                onClick={() => setNotifications(!notifications)}
+                className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${notifications ? "bg-accent" : "bg-bg-tertiary"}`}
+              >
+                <div className={`w-5 h-5 rounded-full absolute top-0.5 transition-all ${notifications ? "right-0.5 bg-white" : "left-0.5 bg-text-secondary"}`} />
               </div>
             </div>
             <div
@@ -134,8 +188,11 @@ export default function SettingsPage() {
                 <p style={{ fontSize: 15 }} className="text-text-primary">시작 시 자동 실행</p>
                 <p style={{ fontSize: 13, marginTop: 2 }} className="text-text-secondary">macOS 로그인 시 자동 시작</p>
               </div>
-              <div className="w-11 h-6 bg-bg-tertiary rounded-full relative cursor-pointer">
-                <div className="w-5 h-5 bg-text-secondary rounded-full absolute top-0.5 left-0.5" />
+              <div
+                onClick={() => setAutoLaunch(!autoLaunch)}
+                className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors ${autoLaunch ? "bg-accent" : "bg-bg-tertiary"}`}
+              >
+                <div className={`w-5 h-5 rounded-full absolute top-0.5 transition-all ${autoLaunch ? "right-0.5 bg-white" : "left-0.5 bg-text-secondary"}`} />
               </div>
             </div>
           </div>
