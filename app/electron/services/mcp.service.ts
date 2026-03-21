@@ -54,12 +54,13 @@ export const mcpService = {
     npmPackage: string,
     env?: Record<string, string>
   ): Promise<void> => {
-    const args = ["mcp", "add", name, "--", "npx", "-y", npmPackage];
+    const args = ["mcp", "add", name];
     if (env) {
       for (const [k, v] of Object.entries(env)) {
         args.push("-e", `${k}=${v}`);
       }
     }
+    args.push("--", "npx", "-y", npmPackage);
     await runClaude(args);
   },
 

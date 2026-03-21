@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { usePluginVM } from "../../viewmodels/plugin.vm";
+import { PLUGIN_CONFIGS, getPluginConfig } from "../../config/pluginConfigs";
+import TokenInputModal from "../shared/TokenInputModal";
+import { ServiceIcon } from "../shared/ServiceIcons";
 
 interface PluginDef {
   name: string;
@@ -8,18 +11,12 @@ interface PluginDef {
   category: "추천" | "전체";
 }
 
-const PLUGINS: PluginDef[] = [
-  { name: "Notion", icon: "📝", desc: "노션 워크스페이스에 연결하여 검색, 업데이트, 워크플로우를 지원합니다.", category: "추천" },
-  { name: "Gmail", icon: "📧", desc: "답장 작성, 스레드 요약, 받은편지함 검색을 지원합니다.", category: "추천" },
-  { name: "Google Calendar", icon: "📅", desc: "일정을 관리하고 미팅을 손쉽게 조율합니다.", category: "추천" },
-  { name: "Slack", icon: "💬", desc: "메시지를 보내고, 캔버스를 만들고, Slack 데이터를 가져옵니다.", category: "추천" },
-  { name: "Figma", icon: "🎨", desc: "Figma 컨텍스트로 다이어그램과 더 나은 코드를 생성합니다.", category: "추천" },
-  { name: "Canva", icon: "🖼️", desc: "검색, 생성, 자동완성, Canva 디자인을 내보냅니다.", category: "추천" },
-  { name: "Google Docs", icon: "📄", desc: "문서에 접근하고 편집합니다.", category: "전체" },
-  { name: "Microsoft Word", icon: "📃", desc: "Word 문서를 읽고 편집합니다.", category: "전체" },
-  { name: "Linear", icon: "📐", desc: "이슈, 프로젝트, 팀 워크플로우를 관리합니다.", category: "전체" },
-  { name: "GitHub", icon: "🐙", desc: "레포지토리, 이슈, PR을 관리합니다.", category: "전체" },
-];
+const PLUGINS: PluginDef[] = PLUGIN_CONFIGS.map((c) => ({
+  name: c.name,
+  icon: c.icon,
+  desc: c.desc,
+  category: c.category,
+}));
 
 function PluginCard({
   plugin,
@@ -49,7 +46,9 @@ function PluginCard({
       }}
       className="hover:border-accent/30"
     >
-      <span style={{ fontSize: 28, flexShrink: 0 }}>{plugin.icon}</span>
+      <div style={{ width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <ServiceIcon name={plugin.name} />
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 600 }} className="text-text-primary">
           {plugin.name}
@@ -136,9 +135,12 @@ function PluginCard({
 }
 
 export default function PluginsPage() {
-  const [tab, setTab] = useState<"추천" | "전체">("추천");
+  const [tab, setTab] = useState<"전체" | "추천">("전체");
   const [search, setSearch] = useState("");
-  const { connections, connecting, error, loadConnections, connect, disconnect, clearError } = usePluginVM();
+  const {
+    connections, connecting, error, tokenModalService,
+    loadConnections, connect, connectWithToken, disconnect, closeTokenModal, clearError,
+  } = usePluginVM();
 
   useEffect(() => { loadConnections(); }, [loadConnections]);
 
@@ -150,19 +152,20 @@ export default function PluginsPage() {
 
   const filtered = PLUGINS.filter((p) => {
     if (search) return p.name.toLowerCase().includes(search.toLowerCase());
-    return tab === "추천" ? p.category === "추천" : true;
+    return tab === "전체" ? true : p.category === "추천";
   });
 
   return (
     <div style={{ padding: "24px 28px" }} className="h-full overflow-y-auto">
       <h1 style={{ fontSize: 18, fontWeight: 700 }} className="text-text-primary">커넥터</h1>
       <p style={{ fontSize: 14, marginTop: 8, maxWidth: 560, lineHeight: 1.6 }} className="text-text-secondary">
-        외부 앱, 파일 및 서비스에 연결하세요. AI Agent가 연결된 서비스를 활용하여 더 나은 작업을 수행합니다.
+        외부 앱, 파일 및 서비스에 연결하세요.<br />
+        AI Agent가 연결된 서비스를 활용하여 더 나은 작업을 수행합니다.
       </p>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 28, marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 4 }}>
-          {(["추천", "전체"] as const).map((t) => (
+          {(["전체", "추천"] as const).map((t) => (
             <button
               key={t} onClick={() => setTab(t)}
               style={{ fontSize: 14, padding: "8px 18px", borderRadius: 8, fontWeight: tab === t ? 600 : 400 }}
@@ -201,6 +204,19 @@ export default function PluginsPage() {
           />
         ))}
       </div>
+
+      {tokenModalService && (() => {
+        const config = getPluginConfig(tokenModalService);
+        if (!config) return null;
+        return (
+          <TokenInputModal
+            config={config}
+            loading={connecting === tokenModalService}
+            onSubmit={(envValues, account) => connectWithToken(tokenModalService, envValues, account)}
+            onClose={closeTokenModal}
+          />
+        );
+      })()}
 
       {error && (
         <div

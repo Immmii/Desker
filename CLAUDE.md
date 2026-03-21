@@ -69,7 +69,7 @@ desker/
 │   │   │   │   ├── AppShell.tsx  # 메인 레이아웃 + ProjectPanel + Titlebar
 │   │   │   │   └── Sidebar.tsx   # 왼쪽 네비게이션 (84px)
 │   │   │   ├── pages/
-│   │   │   │   ├── WorkspacePage.tsx   # HomeOffice(40%) + TaskDashboard(60%)
+│   │   │   │   ├── WorkspacePage.tsx   # HomeOffice + 홈 대시보드 (프로젝트패널 없음)
 │   │   │   │   ├── DotEditorPage.tsx   # 픽셀아트 에디터
 │   │   │   │   ├── TasksPage.tsx       # 전체 TaskDashboard
 │   │   │   │   ├── TerminalPage.tsx    # xterm + AI 모델 선택기
@@ -77,13 +77,17 @@ desker/
 │   │   │   │   └── SettingsPage.tsx    # 테마 + 일반 설정
 │   │   │   ├── widgets/
 │   │   │   │   ├── home-office/HomeOfficeCanvas.tsx  # Canvas 2D 도트 HomeOffice
-│   │   │   │   └── task-tracker/
-│   │   │   │       ├── TaskDashboard.tsx  # Kanban/Calendar/List 탭
-│   │   │   │       ├── KanbanBoard.tsx    # dnd-kit 칸반
-│   │   │   │       └── CalendarView.tsx   # 월간/주간 캘린더
+│   │   │   │   ├── task-tracker/
+│   │   │   │   │   ├── TaskDashboard.tsx  # Kanban/Calendar/List 탭
+│   │   │   │   │   ├── KanbanBoard.tsx    # dnd-kit 칸반
+│   │   │   │   │   └── CalendarView.tsx   # 월간/주간 캘린더
+│   │   │   │   └── home-dashboard/
+│   │   │   │       └── HomeDashboard.tsx  # TODAY/Calendar/Habit + TimePanel
 │   │   │   └── shared/
 │   │   │       ├── Icons.tsx         # 사이드바 SVG 아이콘
-│   │   │       └── EditorIcons.tsx   # 도트 에디터 SVG 아이콘
+│   │   │       ├── EditorIcons.tsx   # 도트 에디터 SVG 아이콘
+│   │   │       ├── TaskDetailModal.tsx # 통합 태스크 편집 모달
+│   │   │       └── StartSessionModal.tsx # 세션 시작 (환경+에이전트 선택)
 │   │   └── hooks/
 │   │       ├── useTerminal.ts    # PTY/AI ↔ xterm.js 연결
 │   │       └── useDesktopFiles.ts
@@ -101,6 +105,39 @@ desker/
 - **메뉴**: 홈(Workspace) / 도트 에디터 / 태스크 / 터미널 / 플러그인 / 설정
 - **타이틀바**: Electron frameless (titleBarStyle: hidden, trafficLightPosition)
 - **윈도우 드래그**: CSS `-webkit-app-region: drag` (Titlebar 컴포넌트)
+- **Workspace(홈) 페이지**: 3영역 구성
+  - 상단(40%): HomeOffice 도트 캔버스
+  - 하단 좌측: 홈 대시보드
+  - 우측 패널(280px): Time Panel (총 작업시간 + Timetable)
+
+### Workspace 홈 대시보드 구성
+```
+┌──────────────────────────────────────────────┬──────────┐
+│  HomeOffice 도트 캔버스 (상단 40%)                        │          │
+│  가구 배치 버튼(좌측 상단) → 좌측 슬라이드 드로어           │ TOTAL    │
+├──────────────────────────────────────────────┤ WORK TIME│
+│  날짜                                        │ 0h 00m   │
+│  인사말 + 시간 (22px bold)                    │──────────│
+│                                              │TIME TABLE│
+│ ┌─ PROJECTS ──────────┬── LIFE ──────┐       │ 06 ░░░░░ │
+│ │ [🎓][💻] [+]        │ [📔] [+]     │       │ 07 ██░░░ │
+│ └─────────────────────┴──────────────┘       │ ...      │
+│                                              │ 02 ░░░░░ │
+│ ┌─ TODAY (2) ─┬─ CALENDAR (1)─┬─ HABIT (1)─┐│          │
+│ │ ○ 과제 제출  │   ◀ 3월 ▶     │ 월화수목금토일││          │
+│ │ ● 복습      │  1  2  3 ...  │ 운동 ✓✓✓  ││          │
+│ │ + 추가      │               │ + 습관 추가 ││          │
+│ └─────────────┴───────────────┴────────────┘│          │
+└──────────────────────────────────────────────┴──────────┘
+```
+
+- **인사말**: 시간대별 자동 변경 + 설정 닉네임 표시 ("안녕하세요, OO님! 좋은 새벽이에요 ~")
+- **PROJECTS / LIFE**: task 타입은 PROJECTS, journal 타입은 LIFE (2:1 비율, 세로 구분선)
+- **TODAY**: 오늘 마감 + 진행 중 태스크, 클릭 → Task Detail Modal, 드래그 정렬
+- **CALENDAR**: 미니 월간 캘린더, 오늘 하이라이트, 월 이동
+- **HABIT**: 주간 습관 트래커, 체크 토글, 습관 추가/삭제 (localStorage)
+- **Time Panel (우측)**: 총 작업시간 (세션 기반 실시간) + Timetable (5분 단위, 드래그로 태스크 할당)
+- **프로젝트 패널**: 홈에서는 숨김, 태스크 페이지에서만 표시
 
 ## 핵심 기능 4가지
 
@@ -112,9 +149,9 @@ desker/
 - DotArt Store에서 만든 도안 → HomeOffice에 적용
 
 ### 2. Task Tracker
-- Workspace 메인: HomeOffice(40%) + TaskDashboard(60%)
+- 전용 태스크 페이지: Kanban / Calendar / List 뷰
 - 프로젝트/태스크 CRUD → better-sqlite3 영속화
-- Kanban (dnd-kit), Calendar, List 뷰
+- Task Detail Modal: 통합 편집 (상태/우선순위/기간/메모/하위TODO)
 - "▶ 시작" → 터미널 세션 생성 (shell 또는 AI 모드)
 
 ### 3. 도트 에디터 (Pixel Art Editor)
@@ -124,6 +161,75 @@ desker/
 ### 4. MCP Plugin (OAuth 연결)
 - Notion, Gmail, Google Calendar, Slack, Figma, Canva 등
 - OAuth 방식 인증, 전역 플러그인 관리
+
+### 5. 멀티 에이전트 시스템
+
+#### 환경(Environment) 분류
+```
+┌─ 📋 일반(General) ──────────────────────────────────────┐
+│  🎯 Task Agent    — 태스크 수행, 할 일 처리              │
+│  🔍 Research Agent — 리서치, 정보 수집, 분석             │
+│  📄 Docs Agent    — 문서 작성, 정리, 요약               │
+└─────────────────────────────────────────────────────────┘
+
+┌─ 💻 개발(Development) ──────────────────────────────────┐
+│  📝 Planning Agent  — 기획, 개발 명세 작성, 아키텍처 설계 │
+│  🖥 Client Agent    — 프론트엔드 개발 (React, UI)        │
+│  ⚙ Server Agent    — 백엔드 개발 (API, DB, 로직)        │
+│  🧪 Testing Agent  — 테스트 작성, 실행, 커버리지         │
+│  ✅ QA Agent        — 코드 리뷰, 버그 탐지, 품질 검증    │
+│  📊 DevOps Agent   — Git commit/Issue/PR/Project 관리   │
+│  🔒 Security Agent — 보안 점검, 취약점 분석, 인증/인가  │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 에이전트 실행 모델
+- 각 에이전트 = **독립 AI CLI 세션** (별도 system prompt + MCP tools)
+- **병렬 실행**: 여러 에이전트 동시 작업 가능 (터미널 분할 패널)
+- **에이전트 스폰**: 태스크 시작 시 환경+역할 선택 → 해당 프리셋으로 Claude CLI 스폰
+- 세션 헤더에 에이전트 역할 뱃지 표시
+
+#### 에이전트 간 컨텍스트 공유
+- **공유 컨텍스트**: 태스크 정보, 프로젝트 구조, 이전 에이전트 출력물
+- **파이프라인**: Planning → Client/Server Dev → Testing → QA → DevOps 순차 핸드오프
+- **공유 파일**: 기획 에이전트가 작성한 명세 → Dev 에이전트가 참조
+- **상태 보드**: 각 에이전트의 현재 상태/진행률을 대시보드에서 확인
+
+#### HomeOffice 시각화
+- 활성 에이전트마다 **별도 도트 캐릭터**가 방 안에 배치
+- 각 캐릭터 위에 역할 라벨 표시 (📝 기획, 🖥 Client 등)
+- 에이전트 상태별 애니메이션 (idle/working/done)
+- 최대 동시 에이전트 수: 4~6명
+- 에이전트 클릭 → 해당 터미널 세션으로 이동
+
+#### 데이터 모델
+```typescript
+type AgentEnvironment = "general" | "development";
+type GeneralAgentRole = "task" | "research" | "docs";
+type DevAgentRole = "planning" | "client" | "server" | "testing" | "qa" | "devops";
+type AgentRole = GeneralAgentRole | DevAgentRole;
+
+interface AgentPreset {
+  role: AgentRole;
+  environment: AgentEnvironment;
+  label: string;
+  icon: string;
+  systemPrompt: string;    // 역할별 시스템 프롬프트
+  mcpTools?: string[];     // 역할별 MCP 도구 제한
+  color: string;           // 뱃지/캐릭터 색상
+}
+```
+
+#### DB 확장
+```sql
+-- 세션에 에이전트 역할 추가
+ALTER TABLE sessions ADD COLUMN agent_role TEXT;
+ALTER TABLE sessions ADD COLUMN agent_env TEXT;
+
+-- 에이전트 간 공유 컨텍스트
+agent_contexts (id TEXT PK, task_id TEXT FK, agent_role TEXT,
+                content TEXT, created_at TEXT)
+```
 
 ## IPC 패턴
 
@@ -139,7 +245,7 @@ main → webContents.send("pty:data", id, data) → renderer에서 onData 콜백
 ```
 
 ### Preload API (window.deskerAPI)
-- `db`: getProjects, addProject, updateProject, removeProject, getTasks, addTask, updateTask, removeTask
+- `db`: getProjects, addProject, updateProject, removeProject, getTasks, addTask, updateTask, removeTask, getTaskTodos, addTaskTodo, updateTaskTodo, removeTaskTodo
 - `pty`: create, write, resize, kill, onData, onExit
 - `ai`: spawn, write, kill, onData, onExit, checkAvailable
 - `fs`: listDesktopFiles
@@ -148,7 +254,8 @@ main → webContents.send("pty:data", id, data) → renderer에서 onData 콜백
 ## DB 스키마 (better-sqlite3)
 ```sql
 projects (id TEXT PK, name, icon, color, type, created_at, updated_at)
-tasks (id TEXT PK, project_id FK, title, description, status, priority, due_date, created_at)
+tasks (id TEXT PK, project_id FK, title, description, status, priority, due_date, start_date, created_at)
+task_todos (id TEXT PK, task_id FK, text, done INTEGER, sort_order INTEGER)
 room_objects (id TEXT PK, type, x, y, label)
 dot_arts (id TEXT PK, name, grid_size, pixels TEXT JSON, created_at)
 ```
