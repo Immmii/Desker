@@ -3,8 +3,9 @@ import { useProjectVM } from "../../../viewmodels/project.vm";
 import { useSessionVM } from "../../../viewmodels/session.vm";
 import { useAppVM } from "../../../viewmodels/app.vm";
 import type { Task, TaskStatus, TaskPriority } from "../../../types/models";
-import type { TerminalMode, AiModel } from "../../../viewmodels/session.vm";
+import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../../viewmodels/session.vm";
 import StartSessionModal from "../../shared/StartSessionModal";
+import TaskDetailModal from "../../shared/TaskDetailModal";
 
 const STATUS_COLOR: Record<TaskStatus, string> = {
   todo: "#9090a8",
@@ -169,7 +170,7 @@ function TaskPopup({
 
   const [showStartModal, setShowStartModal] = useState(false);
 
-  const handleStart = (mode: TerminalMode, aiModel?: AiModel) => {
+  const handleStart = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
     if (task.status === "todo") updateTaskStatus(task.id, "in_progress");
     createSession({
       taskId: task.id,
@@ -178,6 +179,8 @@ function TaskPopup({
       projectIcon: project?.icon ?? "📁",
       mode,
       aiModel,
+      agentRole,
+      agentEnv,
     });
     setPage("terminal");
     setShowStartModal(false);
@@ -308,24 +311,55 @@ function TaskPopup({
   );
 }
 
+type CalendarMode = "monthly" | "weekly";
+
+const WEEK_DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+
+/** Get Monday of the week containing the given date */
+function getMonday(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Sunday → go back 6, else go to Monday
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Format date string as YYYY-MM-DD for comparison */
+function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Check if a task falls on a given date (by dueDate or startDate~dueDate range) */
+function taskFallsOnDate(task: Task, dateStr: string): boolean {
+  if (task.startDate && task.dueDate) {
+    return dateStr >= task.startDate && dateStr <= task.dueDate;
+  }
+  if (task.dueDate) return task.dueDate === dateStr;
+  if (task.startDate) return task.startDate === dateStr;
+  return false;
+}
+
 export default function CalendarView() {
   const { tasks, selectedProjectId } = useProjectVM();
   const [viewDate, setViewDate] = useState(new Date());
-  const [selectedTask, setSelectedTask] = useState<{
-    task: Task;
-    rect: { top: number; left: number; bottom: number; right: number };
-  } | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("monthly");
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const today = new Date();
+  const todayStr = toDateStr(today);
   const isToday = (d: number) =>
     today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Build calendar grid
+  // Build calendar grid (monthly)
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -335,7 +369,7 @@ export default function CalendarView() {
     ? tasks.filter((t) => t.projectId === selectedProjectId)
     : tasks;
 
-  // Map tasks to dates
+  // Map tasks to dates (monthly)
   const tasksByDate = new Map<number, typeof filteredTasks>();
   for (const task of filteredTasks) {
     if (!task.dueDate) continue;
@@ -347,29 +381,72 @@ export default function CalendarView() {
     }
   }
 
+  // Weekly view helpers
+  const weekMonday = getMonday(viewDate);
+  const weekDays: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekMonday);
+    d.setDate(weekMonday.getDate() + i);
+    weekDays.push(d);
+  }
+
+  // Map tasks to week dates
+  const tasksByWeekDate = new Map<string, Task[]>();
+  for (const day of weekDays) {
+    const ds = toDateStr(day);
+    const dayTasks = filteredTasks.filter((t) => taskFallsOnDate(t, ds));
+    if (dayTasks.length > 0) tasksByWeekDate.set(ds, dayTasks);
+  }
+
+  // Navigation
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+  const prevWeek = () => {
+    const d = new Date(viewDate);
+    d.setDate(d.getDate() - 7);
+    setViewDate(d);
+  };
+  const nextWeek = () => {
+    const d = new Date(viewDate);
+    d.setDate(d.getDate() + 7);
+    setViewDate(d);
+  };
   const goToday = () => setViewDate(new Date());
 
   const handleTaskClick = (e: React.MouseEvent, task: Task) => {
     e.stopPropagation();
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setSelectedTask({
-      task,
-      rect: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right },
-    });
+    setDetailTaskId(task.id);
   };
+
+  // Week header label
+  const weekStartStr = `${weekDays[0].getMonth() + 1}.${weekDays[0].getDate()}`;
+  const weekEndStr = `${weekDays[6].getMonth() + 1}.${weekDays[6].getDate()}`;
+
+  const modeToggleStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: 12,
+    padding: "4px 12px",
+    borderRadius: 6,
+    cursor: "pointer",
+    border: "none",
+    fontWeight: active ? 600 : 400,
+    background: active ? "var(--color-accent)" : "transparent",
+    color: active ? "#fff" : "var(--color-text-secondary)",
+    fontFamily: "Pretendard, sans-serif",
+    transition: "all 0.15s",
+  });
 
   return (
     <div style={{ padding: "16px 20px", height: "100%", display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700 }} className="text-text-primary">
-          {year}. {month + 1}
+          {calendarMode === "monthly"
+            ? `${year}. ${month + 1}`
+            : `${year}. ${weekStartStr} ~ ${weekEndStr}`}
         </h2>
         <div style={{ display: "flex", gap: 4 }}>
           <button
-            onClick={prevMonth}
+            onClick={calendarMode === "monthly" ? prevMonth : prevWeek}
             style={{ fontSize: 14, padding: "4px 10px", borderRadius: 6 }}
             className="text-text-secondary hover:bg-bg-hover cursor-pointer"
           >
@@ -383,11 +460,30 @@ export default function CalendarView() {
             오늘
           </button>
           <button
-            onClick={nextMonth}
+            onClick={calendarMode === "monthly" ? nextMonth : nextWeek}
             style={{ fontSize: 14, padding: "4px 10px", borderRadius: 6 }}
             className="text-text-secondary hover:bg-bg-hover cursor-pointer"
           >
             ▶
+          </button>
+        </div>
+
+        {/* View mode toggle */}
+        <div
+          style={{
+            display: "flex",
+            gap: 2,
+            padding: 2,
+            borderRadius: 8,
+            background: "var(--color-bg-secondary)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
+          <button onClick={() => setCalendarMode("monthly")} style={modeToggleStyle(calendarMode === "monthly")}>
+            월간
+          </button>
+          <button onClick={() => setCalendarMode("weekly")} style={modeToggleStyle(calendarMode === "weekly")}>
+            주간
           </button>
         </div>
 
@@ -408,106 +504,236 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {/* Day headers */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-        {DAY_LABELS.map((d, i) => (
-          <div
-            key={d}
-            style={{ fontSize: 12, fontWeight: 600, padding: "6px 8px", textAlign: "center" }}
-            className={i === 0 ? "text-danger" : i === 6 ? "text-pixel-blue" : "text-text-secondary"}
-          >
-            {d}
+      {calendarMode === "monthly" ? (
+        <>
+          {/* Day headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+            {DAY_LABELS.map((d, i) => (
+              <div
+                key={d}
+                style={{ fontSize: 12, fontWeight: 600, padding: "6px 8px", textAlign: "center" }}
+                className={i === 0 ? "text-danger" : i === 6 ? "text-pixel-blue" : "text-text-secondary"}
+              >
+                {d}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* Calendar grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          flex: 1,
-          gridAutoRows: "1fr",
-        }}
-      >
-        {cells.map((day, i) => {
-          const dayTasks = day ? tasksByDate.get(day) || [] : [];
-          const colIdx = i % 7;
+          {/* Calendar grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              flex: 1,
+              gridAutoRows: "1fr",
+            }}
+          >
+            {cells.map((day, i) => {
+              const dayTasks = day ? tasksByDate.get(day) || [] : [];
+              const colIdx = i % 7;
 
-          return (
-            <div
-              key={i}
-              style={{
-                borderTop: "1px solid var(--color-border)",
-                borderRight: colIdx < 6 ? "1px solid rgba(46,46,66,0.2)" : "none",
-                padding: "4px 6px",
-                minHeight: 0,
-                overflow: "hidden",
-              }}
-              className={isToday(day ?? 0) ? "bg-accent/5" : ""}
-            >
-              {day && (
-                <>
+              return (
+                <div
+                  key={i}
+                  style={{
+                    borderTop: "1px solid var(--color-border)",
+                    borderRight: colIdx < 6 ? "1px solid rgba(46,46,66,0.2)" : "none",
+                    padding: "4px 6px",
+                    minHeight: 0,
+                    overflow: "hidden",
+                  }}
+                  className={isToday(day ?? 0) ? "bg-accent/5" : ""}
+                >
+                  {day && (
+                    <>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: isToday(day) ? 700 : 400,
+                          marginBottom: 2,
+                          width: isToday(day) ? 24 : "auto",
+                          height: isToday(day) ? 24 : "auto",
+                          borderRadius: isToday(day) ? "50%" : 0,
+                          display: isToday(day) ? "flex" : "block",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          background: isToday(day) ? "var(--color-accent)" : "transparent",
+                          color: isToday(day) ? "white" : colIdx === 0 ? "var(--color-danger)" : colIdx === 6 ? "var(--color-pixel-blue)" : "var(--color-text-primary)",
+                        }}
+                      >
+                        {day}
+                      </div>
+
+                      {dayTasks.slice(0, 3).map((task) => (
+                        <div
+                          key={task.id}
+                          onClick={(e) => handleTaskClick(e, task)}
+                          style={{
+                            fontSize: 10,
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            marginBottom: 2,
+                            borderLeft: `3px solid ${STATUS_COLOR[task.status]}`,
+                            background: STATUS_BG[task.status],
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            cursor: "pointer",
+                            transition: "opacity 0.15s",
+                          }}
+                          className="text-text-primary hover:!opacity-80"
+                          title={task.title}
+                        >
+                          {task.title}
+                        </div>
+                      ))}
+                      {dayTasks.length > 3 && (
+                        <div style={{ fontSize: 10, paddingLeft: 6 }} className="text-text-secondary">
+                          +{dayTasks.length - 3}개
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        /* ── Weekly View ── */
+        <>
+          {/* Week day headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0 }}>
+            {weekDays.map((day, i) => {
+              const ds = toDateStr(day);
+              const isTodayCol = ds === todayStr;
+              // Saturday = index 5 (토), Sunday = index 6 (일)
+              const isSunday = i === 6;
+              const isSaturday = i === 5;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    textAlign: "center",
+                    padding: "8px 4px",
+                    borderBottom: "2px solid",
+                    borderBottomColor: isTodayCol ? "var(--color-accent)" : "var(--color-border)",
+                  }}
+                >
                   <div
                     style={{
-                      fontSize: 13,
-                      fontWeight: isToday(day) ? 700 : 400,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: isSunday
+                        ? "var(--color-danger)"
+                        : isSaturday
+                          ? "var(--color-pixel-blue)"
+                          : "var(--color-text-secondary)",
                       marginBottom: 2,
-                      width: isToday(day) ? 24 : "auto",
-                      height: isToday(day) ? 24 : "auto",
-                      borderRadius: isToday(day) ? "50%" : 0,
-                      display: isToday(day) ? "flex" : "block",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isToday(day) ? "var(--color-accent)" : "transparent",
-                      color: isToday(day) ? "white" : colIdx === 0 ? "var(--color-danger)" : colIdx === 6 ? "var(--color-pixel-blue)" : "var(--color-text-primary)",
                     }}
                   >
-                    {day}
+                    {WEEK_DAY_LABELS[i]}
                   </div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: isTodayCol ? 700 : 400,
+                      width: isTodayCol ? 32 : "auto",
+                      height: isTodayCol ? 32 : "auto",
+                      borderRadius: isTodayCol ? "50%" : 0,
+                      display: isTodayCol ? "inline-flex" : "block",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: isTodayCol ? "var(--color-accent)" : "transparent",
+                      color: isTodayCol ? "#fff" : "var(--color-text-primary)",
+                    }}
+                  >
+                    {day.getDate()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-                  {dayTasks.slice(0, 3).map((task) => (
+          {/* Week task columns */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, 1fr)",
+              flex: 1,
+              overflow: "hidden",
+            }}
+          >
+            {weekDays.map((day, i) => {
+              const ds = toDateStr(day);
+              const dayTasks = tasksByWeekDate.get(ds) || [];
+              const isTodayCol = ds === todayStr;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    borderRight: i < 6 ? "1px solid rgba(46,46,66,0.2)" : "none",
+                    padding: "8px 6px",
+                    overflow: "auto",
+                    background: isTodayCol ? "rgba(108,92,231,0.04)" : "transparent",
+                  }}
+                >
+                  {dayTasks.map((task) => (
                     <div
                       key={task.id}
                       onClick={(e) => handleTaskClick(e, task)}
                       style={{
-                        fontSize: 10,
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                        marginBottom: 2,
+                        fontSize: 12,
+                        padding: "6px 8px",
+                        borderRadius: 6,
+                        marginBottom: 4,
                         borderLeft: `3px solid ${STATUS_COLOR[task.status]}`,
                         background: STATUS_BG[task.status],
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
                         cursor: "pointer",
                         transition: "opacity 0.15s",
                       }}
                       className="text-text-primary hover:!opacity-80"
                       title={task.title}
                     >
-                      {task.title}
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          marginBottom: 2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {task.title}
+                      </div>
+                      <div style={{ fontSize: 10, color: STATUS_COLOR[task.status], fontWeight: 500 }}>
+                        {STATUS_LABEL[task.status]}
+                      </div>
                     </div>
                   ))}
-                  {dayTasks.length > 3 && (
-                    <div style={{ fontSize: 10, paddingLeft: 6 }} className="text-text-secondary">
-                      +{dayTasks.length - 3}개
+                  {dayTasks.length === 0 && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--color-text-secondary)",
+                        opacity: 0.5,
+                        textAlign: "center",
+                        paddingTop: 12,
+                      }}
+                    >
+                      -
                     </div>
                   )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
-      {/* Task popup */}
-      {selectedTask && (
-        <TaskPopup
-          task={selectedTask.task}
-          anchorRect={selectedTask.rect}
-          onClose={() => setSelectedTask(null)}
-        />
+      {/* Task detail modal */}
+      {detailTaskId && (
+        <TaskDetailModal taskId={detailTaskId} onClose={() => setDetailTaskId(null)} />
       )}
     </div>
   );
