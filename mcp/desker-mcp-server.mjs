@@ -103,6 +103,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["name"],
       },
     },
+    {
+      name: "desker_list_shortcuts",
+      description: "Desker 바로가기(북마크) 목록 조회",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "desker_add_shortcut",
+      description: "Desker에 새 바로가기(북마크) 추가",
+      inputSchema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "바로가기 이름" },
+          url: { type: "string", description: "URL 주소" },
+        },
+        required: ["name", "url"],
+      },
+    },
+    {
+      name: "desker_remove_shortcut",
+      description: "Desker 바로가기(북마크) 삭제",
+      inputSchema: {
+        type: "object",
+        properties: {
+          shortcut_id: { type: "string", description: "바로가기 ID" },
+        },
+        required: ["shortcut_id"],
+      },
+    },
   ],
 }));
 
@@ -165,6 +193,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ).run(id, args.name, args.icon || "📁", args.color || "#6c5ce7", args.type || "task", now, now);
         const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(id);
         return { content: [{ type: "text", text: `생성 완료:\n${JSON.stringify(row, null, 2)}` }] };
+      }
+
+      case "desker_list_shortcuts": {
+        const rows = db.prepare("SELECT * FROM shortcuts ORDER BY sort_order ASC").all();
+        return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
+      }
+
+      case "desker_add_shortcut": {
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) as m FROM shortcuts").get();
+        db.prepare(
+          "INSERT INTO shortcuts (id, name, url, sort_order, created_at) VALUES (?, ?, ?, ?, ?)"
+        ).run(id, args.name, args.url, maxOrder.m + 1, now);
+        const row = db.prepare("SELECT * FROM shortcuts WHERE id = ?").get(id);
+        return { content: [{ type: "text", text: `추가 완료:\n${JSON.stringify(row, null, 2)}` }] };
+      }
+
+      case "desker_remove_shortcut": {
+        db.prepare("DELETE FROM shortcuts WHERE id = ?").run(args.shortcut_id);
+        return { content: [{ type: "text", text: `삭제 완료: ${args.shortcut_id}` }] };
       }
 
       default:

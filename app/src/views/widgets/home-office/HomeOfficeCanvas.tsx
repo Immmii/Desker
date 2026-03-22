@@ -810,10 +810,28 @@ export default function HomeOfficeCanvas() {
         }
       }
 
+      // ── Agent workstation slots ──
+      const agentSessions = sessions.filter((s) => s.state === "working" || s.state === "idle");
+      const DESK_RELATED = new Set(["desk", "chair", "monitor", "coffee", "journal"]);
+      const hasAgents = agentSessions.length > 0;
+
+      // Workstation positions (desk origin) — max 6
+      const SLOTS = [
+        { dx: 88, dy: 52 },
+        { dx: 4,  dy: 56 },
+        { dx: 178, dy: 56 },
+        { dx: 4,  dy: 96 },
+        { dx: 88, dy: 96 },
+        { dx: 178, dy: 96 },
+      ];
+
       // ── Draw objects (sorted by y for depth) ──
       const sorted = [...objects].sort((a, b) => a.y - b.y);
 
       for (const obj of sorted) {
+        // Hide default desk furniture when agents occupy the room
+        if (hasAgents && DESK_RELATED.has(obj.id)) continue;
+
         const drawFn = DRAW_MAP[obj.id];
         if (!drawFn) continue;
 
@@ -846,28 +864,76 @@ export default function HomeOfficeCanvas() {
         }
       }
 
-      // ── Agents (multi-agent) ──
-      const agentSessions = sessions.filter((s) => s.state === "working" || s.state === "idle");
-      if (agentSessions.length === 0) {
-        // No sessions: draw idle default agent
+      // ── Agent Workstations ──
+      if (!hasAgents) {
+        // No sessions: draw idle default agent at existing desk
         drawAgent(ctx, 126, 70, "idle", animFrame);
       } else {
-        // Position agents in a row, max 6
         const maxAgents = Math.min(agentSessions.length, 6);
-        const startX = 100;
-        const spacing = 28;
+
+        // Group agents by taskId to find context-sharing pairs
+        const taskGroups = new Map<string, number[]>();
         for (let i = 0; i < maxAgents; i++) {
+          const tid = agentSessions[i].taskId;
+          if (!taskGroups.has(tid)) taskGroups.set(tid, []);
+          taskGroups.get(tid)!.push(i);
+        }
+
+        // Draw each workstation: desk → chair → agent (back to front)
+        for (let i = 0; i < maxAgents; i++) {
+          const slot = SLOTS[i];
           const s = agentSessions[i];
           const preset = s.agentRole ? getAgentPreset(s.agentRole) : null;
-          const ax = startX + i * spacing;
-          const ay = 70;
+
+          // 1) Desk
+          drawDesk(ctx, slot.dx, slot.dy);
+          // Mini monitor on desk
+          drawMonitor(ctx, slot.dx + 15, slot.dy - 20);
+
+          // 2) Chair (drawn before agent, agent overlaps it)
+          drawChair(ctx, slot.dx + 19, slot.dy + 24);
+
+          // 3) Agent sitting at desk
           drawAgent(
-            ctx, ax, ay,
+            ctx,
+            slot.dx + 22,
+            slot.dy + 12,
             s.state,
             animFrame,
             preset?.color,
             preset ? preset.icon : undefined,
           );
+        }
+
+        // ── Context sharing connections ──
+        for (const [, indices] of taskGroups) {
+          if (indices.length < 2) continue;
+          // Draw dotted connection line between agents sharing same task
+          ctx.save();
+          ctx.strokeStyle = C.accent;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.globalAlpha = 0.6;
+          for (let j = 0; j < indices.length - 1; j++) {
+            const a = SLOTS[indices[j]];
+            const b = SLOTS[indices[j + 1]];
+            const ax = a.dx + 28, ay = a.dy + 20;
+            const bx = b.dx + 28, by = b.dy + 20;
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
+            ctx.stroke();
+            // Shared context icon (small circle) at midpoint
+            const mx = (ax + bx) / 2, my = (ay + by) / 2;
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.8;
+            pxRect(ctx, mx - 3, my - 3, 6, 6, C.accent);
+            pxRect(ctx, mx - 2, my - 2, 4, 4, C.white);
+            pxRect(ctx, mx - 1, my - 1, 2, 2, C.accent);
+            ctx.setLineDash([2, 2]);
+            ctx.globalAlpha = 0.6;
+          }
+          ctx.restore();
         }
       }
 
@@ -895,7 +961,7 @@ export default function HomeOfficeCanvas() {
 
       ctx.restore();
     },
-    [objects, hoveredObj, dragObj, lampOn, agentState, animFrame, dotArts]
+    [objects, hoveredObj, dragObj, lampOn, agentState, animFrame, dotArts, sessions]
   );
 
   useEffect(() => {
@@ -983,21 +1049,21 @@ export default function HomeOfficeCanvas() {
       }
     }
 
-    // Check if clicked on an agent character → navigate to terminal
+    // Check if clicked on an agent workstation → navigate to terminal
     if (downPos) {
       const canvas = canvasRef.current;
       if (canvas) {
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const cx = (e.clientX - rect.left) * scaleX;
-        const cy = (e.clientY - rect.top) * scaleY;
+        const [rx, ry] = toRoom(e.clientX - rect.left, e.clientY - rect.top);
         const agentSess = sessions.filter((ss) => ss.state === "working" || ss.state === "idle");
+        const SLOTS = [
+          { dx: 88, dy: 52 }, { dx: 4, dy: 56 }, { dx: 178, dy: 56 },
+          { dx: 4, dy: 96 }, { dx: 88, dy: 96 }, { dx: 178, dy: 96 },
+        ];
         const maxA = Math.min(agentSess.length, 6);
         for (let i = 0; i < maxA; i++) {
-          const ax = 100 + i * 28;
-          const ay = 70;
-          if (cx >= ax && cx <= ax + 18 && cy >= ay && cy <= ay + 24) {
+          // Hit area covers agent + desk area (~56×50)
+          if (rx >= SLOTS[i].dx && rx <= SLOTS[i].dx + 56 && ry >= SLOTS[i].dy - 20 && ry <= SLOTS[i].dy + 46) {
             setActiveSession(agentSess[i].id);
             setCurrentPage("terminal");
             return;

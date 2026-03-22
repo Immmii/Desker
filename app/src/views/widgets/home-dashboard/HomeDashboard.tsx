@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
   arrayMove,
 } from "@dnd-kit/sortable";
@@ -230,6 +233,42 @@ function Timetable() {
     }));
     window.deskerAPI.db.saveTimetableBlocks(dateStr, entries);
   }, []);
+
+  // Persist session blocks to DB when a session is removed
+  const prevSessionIdsRef = useRef<Set<string>>(new Set());
+  const prevSessionBlocksRef = useRef<Record<string, TimeBlock>>({});
+
+  useEffect(() => {
+    const currentIds = new Set(sessions.map((s) => s.id));
+    const prevIds = prevSessionIdsRef.current;
+
+    // Detect removed sessions
+    const removedIds = new Set<string>();
+    for (const id of prevIds) {
+      if (!currentIds.has(id)) removedIds.add(id);
+    }
+
+    // If sessions were removed, save their blocks into manualBlocks
+    if (removedIds.size > 0) {
+      const blocksToSave: Record<string, TimeBlock> = {};
+      for (const [key, block] of Object.entries(prevSessionBlocksRef.current)) {
+        if (removedIds.has(block.taskId) || !sessionBlocks[key]) {
+          blocksToSave[key] = block;
+        }
+      }
+
+      if (Object.keys(blocksToSave).length > 0) {
+        setManualBlocks((prev) => {
+          const next = { ...prev, ...blocksToSave };
+          saveBlocksToDb(next);
+          return next;
+        });
+      }
+    }
+
+    prevSessionIdsRef.current = currentIds;
+    prevSessionBlocksRef.current = { ...sessionBlocks };
+  }, [sessions, sessionBlocks, saveBlocksToDb]);
 
   // Merge: session blocks + manual blocks (manual takes priority)
   const blocks = useMemo(() => ({ ...sessionBlocks, ...manualBlocks }), [sessionBlocks, manualBlocks]);
@@ -516,12 +555,173 @@ function SortableTodayItem({ task, onToggle, onOpen }: { task: Task; onToggle: (
   );
 }
 
+function ProjectDropdown({
+  projects,
+  selectedId,
+  onSelect,
+}: {
+  projects: { id: string; name: string; icon: string; color: string }[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = projects.find((p) => p.id === selectedId);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <div
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
+          border: `1px solid ${open ? "var(--color-accent)" : "var(--color-border)"}`,
+          background: "var(--color-bg-primary)", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          transition: "border-color 0.15s",
+          boxSizing: "border-box",
+        }}
+        className="text-text-primary"
+      >
+        <span>{selected ? `${selected.icon} ${selected.name}` : "프로젝트 선택"}</span>
+        <span style={{ fontSize: 10, opacity: 0.5, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▼</span>
+      </div>
+
+      {open && (
+        <div
+          onMouseLeave={() => setOpen(false)}
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0,
+            background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)",
+            borderRadius: 10, padding: 4, zIndex: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+            maxHeight: 180, overflowY: "auto",
+          }}
+        >
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => { onSelect(p.id); setOpen(false); }}
+              style={{
+                padding: "7px 10px", borderRadius: 7, fontSize: 13, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+                background: p.id === selectedId ? "var(--color-bg-tertiary, rgba(255,255,255,0.06))" : "transparent",
+                transition: "background 0.12s",
+              }}
+              className="text-text-primary hover:bg-white/5"
+            >
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: p.color, flexShrink: 0,
+              }} />
+              <span>{p.icon} {p.name}</span>
+              {p.id === selectedId && <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.5 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuickTaskAddModal({ onClose }: { onClose: () => void }) {
+  const { projects, addTask } = useProjectVM();
+  const [title, setTitle] = useState("");
+  const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+
+  const handleSubmit = () => {
+    if (!title.trim() || !projectId) return;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    addTask({
+      projectId,
+      title: title.trim(),
+      description: "",
+      status: "todo",
+      priority: "medium",
+      dueDate: todayStr,
+      startDate: null,
+    });
+    onClose();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "relative", background: "var(--color-bg-secondary)", borderRadius: 14,
+          padding: 20, width: 320, border: "1px solid var(--color-border)",
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }} className="text-text-primary">
+          태스크 추가
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }} className="text-text-secondary">프로젝트</div>
+          <ProjectDropdown
+            projects={projects}
+            selectedId={projectId}
+            onSelect={setProjectId}
+          />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }} className="text-text-secondary">제목</div>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            placeholder="태스크 이름 입력..."
+            autoFocus
+            style={{
+              width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
+              border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
+              color: "var(--color-text-primary)", outline: "none", boxSizing: "border-box",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13,
+              border: "1px solid var(--color-border)", background: "transparent",
+              color: "var(--color-text-secondary)", cursor: "pointer",
+            }}
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13,
+              border: "none", background: "var(--color-accent)", color: "#fff",
+              cursor: "pointer", fontWeight: 600,
+            }}
+          >
+            추가
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TodayTasks({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
-  const { tasks, projects, addTask, updateTask, reorderTasks } = useProjectVM();
+  const { tasks, updateTask, reorderTasks } = useProjectVM();
   const setPage = useAppVM((s) => s.setCurrentPage);
-  const [showAddInput, setShowAddInput] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const addInputRef = useRef<HTMLInputElement>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayTasks = tasks.filter((t) => {
@@ -569,52 +769,15 @@ function TodayTasks({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
           </SortableContext>
         </DndContext>
       )}
-      {showAddInput ? (
-        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <input
-            ref={addInputRef}
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newTitle.trim()) {
-                const todayStr = new Date().toISOString().slice(0, 10);
-                addTask({
-                  projectId: projects[0]?.id ?? "",
-                  title: newTitle.trim(),
-                  description: "",
-                  status: "todo",
-                  priority: "medium",
-                  dueDate: todayStr,
-                  startDate: null,
-                });
-                setNewTitle("");
-                setShowAddInput(false);
-              }
-              if (e.key === "Escape") { setShowAddInput(false); setNewTitle(""); }
-            }}
-            placeholder="태스크 이름 입력..."
-            style={{
-              flex: 1, padding: "6px 10px", borderRadius: 6, fontSize: 13,
-              border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
-              color: "var(--color-text-primary)", outline: "none",
-              fontFamily: "Pretendard, sans-serif",
-            }}
-          />
-          <button
-            onClick={() => { setShowAddInput(false); setNewTitle(""); }}
-            style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--color-border)", background: "transparent", color: "var(--color-text-secondary)", cursor: "pointer" }}
-          >
-            취소
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => { setShowAddInput(true); setTimeout(() => addInputRef.current?.focus(), 30); }}
-          style={{ fontSize: 12, marginTop: 6, padding: "4px 0", display: "block" }}
-          className="text-text-secondary/40 hover:text-accent cursor-pointer transition-colors"
-        >
-          + 태스크 추가
-        </button>
+      <button
+        onClick={() => setShowAddModal(true)}
+        style={{ fontSize: 12, marginTop: 6, padding: "4px 0", display: "block" }}
+        className="text-text-secondary/40 hover:text-accent cursor-pointer transition-colors"
+      >
+        + 태스크 추가
+      </button>
+      {showAddModal && (
+        <QuickTaskAddModal onClose={() => setShowAddModal(false)} />
       )}
       <button
         onClick={() => setPage("tasks")}
@@ -974,29 +1137,355 @@ function getGreeting(hour: number): string {
   return "좋은 새벽이에요";
 }
 
+// ── Shortcuts ──
+interface Shortcut {
+  id: string;
+  name: string;
+  url: string;
+}
+
+function getFaviconUrl(url: string) {
+  try {
+    const u = new URL(url);
+    return `https://www.google.com/s2/favicons?domain=${u.hostname}&sz=64`;
+  } catch {
+    return "";
+  }
+}
+
+function useShortcuts() {
+  const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
+
+  // Load from DB on mount + migrate localStorage data
+  useEffect(() => {
+    window.deskerAPI.db.getShortcuts().then(async (rows) => {
+      if (rows.length === 0) {
+        // Migrate from localStorage if DB is empty
+        try {
+          const stored = JSON.parse(localStorage.getItem("desker-shortcuts") ?? "[]") as Shortcut[];
+          if (stored.length > 0) {
+            for (const sc of stored) {
+              await window.deskerAPI.db.addShortcut(sc.name, sc.url);
+            }
+            const migrated = await window.deskerAPI.db.getShortcuts();
+            setShortcuts(migrated.map((r) => ({ id: r.id, name: r.name, url: r.url })));
+            localStorage.removeItem("desker-shortcuts");
+            return;
+          }
+        } catch { /* ignore parse errors */ }
+      }
+      setShortcuts(rows.map((r) => ({ id: r.id, name: r.name, url: r.url })));
+    });
+  }, []);
+
+  const add = useCallback((name: string, url: string) => {
+    window.deskerAPI.db.addShortcut(name, url).then((row) => {
+      setShortcuts((prev) => [...prev, { id: row.id, name: row.name, url: row.url }]);
+    });
+  }, []);
+
+  const remove = useCallback((id: string) => {
+    window.deskerAPI.db.removeShortcut(id);
+    setShortcuts((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const reorder = useCallback((oldIndex: number, newIndex: number) => {
+    setShortcuts((prev) => {
+      const next = arrayMove(prev, oldIndex, newIndex);
+      window.deskerAPI.db.reorderShortcuts(next.map((s) => s.id));
+      return next;
+    });
+  }, []);
+
+  return { shortcuts, add, remove, reorder };
+}
+
+function ShortcutAddModal({ onAdd, onClose }: { onAdd: (name: string, url: string) => void; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+
+  const handleSubmit = () => {
+    if (!name.trim() || !url.trim()) return;
+    let finalUrl = url.trim();
+    if (!/^https?:\/\//.test(finalUrl)) finalUrl = "https://" + finalUrl;
+    onAdd(name.trim(), finalUrl);
+    onClose();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} />
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "relative", background: "var(--color-bg-secondary)", borderRadius: 14,
+          padding: 20, width: 300, border: "1px solid var(--color-border)",
+        }}
+      >
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }} className="text-text-primary">
+          바로가기 추가
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="이름 (예: Github)"
+          style={{
+            width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
+            border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
+            color: "var(--color-text-primary)", marginBottom: 8, outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="URL (예: https://github.com)"
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          style={{
+            width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 13,
+            border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
+            color: "var(--color-text-primary)", marginBottom: 14, outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+        {url && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+            <img
+              src={getFaviconUrl(url)}
+              alt=""
+              style={{ width: 24, height: 24, borderRadius: 4 }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+            <span style={{ fontSize: 12 }} className="text-text-secondary">미리보기</span>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13,
+              border: "1px solid var(--color-border)", background: "transparent",
+              color: "var(--color-text-secondary)", cursor: "pointer",
+            }}
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmit}
+            style={{
+              flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13,
+              border: "none", background: "var(--color-accent)", color: "#fff",
+              cursor: "pointer", fontWeight: 600,
+            }}
+          >
+            추가
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sortable Shortcut Item ──
+function SortableShortcutItem({
+  sc,
+  onContextMenu,
+}: {
+  sc: Shortcut;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: sc.id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+    cursor: "grab", position: "relative",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => window.deskerAPI.window.openExternal(sc.url)}
+      onContextMenu={onContextMenu}
+    >
+      <div style={{
+        width: 36, height: 36, borderRadius: "50%",
+        background: "var(--color-bg-tertiary)", display: "flex",
+        alignItems: "center", justifyContent: "center",
+        border: "1px solid var(--color-border)",
+        transition: "transform 0.15s",
+      }}
+        className="hover:!scale-110"
+      >
+        <img
+          src={getFaviconUrl(sc.url)}
+          alt=""
+          style={{ width: 20, height: 20, pointerEvents: "none" }}
+          onError={(e) => {
+            const el = e.target as HTMLImageElement;
+            el.style.display = "none";
+            el.parentElement!.textContent = sc.name[0];
+          }}
+        />
+      </div>
+      <span style={{ fontSize: 10, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }} className="text-text-secondary">
+        {sc.name}
+      </span>
+    </div>
+  );
+}
+
 // ── Main Dashboard ──
 export default function HomeDashboard() {
   const now = useClock();
   const nickname = useSettingsStore((s) => s.nickname);
   const greeting = getGreeting(now.getHours());
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const { shortcuts, add: addShortcut, remove: removeShortcut, reorder: reorderShortcut } = useShortcuts();
+  const [showShortcutModal, setShowShortcutModal] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const shortcutSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const [draggingShortcut, setDraggingShortcut] = useState<Shortcut | null>(null);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [contextMenu]);
 
   return (
     <div style={{ height: "100%", overflowY: "auto", padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Date + Greeting + Time */}
+      {/* Date + Greeting + Time + Shortcuts */}
       <div>
         <div style={{ fontSize: 13, marginBottom: 4 }} className="text-text-secondary">
           {formatDate(now)}
         </div>
-        <div style={{ fontSize: 22, fontWeight: 700, display: "flex", alignItems: "baseline", gap: 10 }}>
-          <span className="text-text-primary">
-            {nickname ? `안녕하세요, ${nickname}님! ${greeting} ~` : `안녕하세요! ${greeting} ~`}
-          </span>
-          <span className="text-text-secondary">
-            {formatTime(now)}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 22, fontWeight: 700, display: "flex", alignItems: "baseline", gap: 10 }}>
+            <span className="text-text-primary">
+              {nickname ? `안녕하세요, ${nickname}님! ${greeting} ~` : `안녕하세요! ${greeting} ~`}
+            </span>
+            <span className="text-text-secondary">
+              {formatTime(now)}
+            </span>
+          </div>
+
+          {/* Shortcuts */}
+          <DndContext
+            sensors={shortcutSensors}
+            collisionDetection={closestCenter}
+            onDragStart={(event: DragStartEvent) => {
+              setDraggingShortcut(shortcuts.find((s) => s.id === event.active.id) ?? null);
+            }}
+            onDragEnd={(event: DragEndEvent) => {
+              const { active, over } = event;
+              if (over && active.id !== over.id) {
+                const oldIndex = shortcuts.findIndex((s) => s.id === active.id);
+                const newIndex = shortcuts.findIndex((s) => s.id === over.id);
+                if (oldIndex !== -1 && newIndex !== -1) reorderShortcut(oldIndex, newIndex);
+              }
+              setDraggingShortcut(null);
+            }}
+          >
+          <SortableContext items={shortcuts.map((s) => s.id)} strategy={horizontalListSortingStrategy}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {shortcuts.map((sc) => (
+              <SortableShortcutItem
+                key={sc.id}
+                sc={sc}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ id: sc.id, x: e.clientX, y: e.clientY });
+                }}
+              />
+            ))}
+
+            {/* Add shortcut button */}
+            <div
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer" }}
+              onClick={() => setShowShortcutModal(true)}
+            >
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: "transparent", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                border: "1.5px dashed var(--color-border)",
+                transition: "border-color 0.15s",
+              }}
+                className="hover:!border-accent"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-text-secondary">
+                  <line x1="8" y1="3" x2="8" y2="13" />
+                  <line x1="3" y1="8" x2="13" y2="8" />
+                </svg>
+              </div>
+              <span style={{ fontSize: 10 }} className="text-text-secondary">추가</span>
+            </div>
+          </div>
+          </SortableContext>
+          <DragOverlay>
+            {draggingShortcut && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "grabbing", opacity: 0.9 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: "50%",
+                  background: "var(--color-bg-tertiary)", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  border: "1px solid var(--color-accent)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+                }}>
+                  <img
+                    src={getFaviconUrl(draggingShortcut.url)}
+                    alt=""
+                    style={{ width: 20, height: 20, pointerEvents: "none" }}
+                  />
+                </div>
+                <span style={{ fontSize: 10 }} className="text-text-secondary">
+                  {draggingShortcut.name}
+                </span>
+              </div>
+            )}
+          </DragOverlay>
+          </DndContext>
         </div>
       </div>
+
+      {/* Context menu for shortcut delete */}
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 400,
+            background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)",
+            borderRadius: 8, padding: 4, minWidth: 100,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { removeShortcut(contextMenu.id); setContextMenu(null); }}
+            style={{
+              display: "block", width: "100%", padding: "6px 12px", borderRadius: 6,
+              border: "none", background: "transparent", color: "var(--color-error, #e74c3c)",
+              fontSize: 12, cursor: "pointer", textAlign: "left",
+            }}
+            className="hover:bg-bg-hover"
+          >
+            삭제
+          </button>
+        </div>
+      )}
+
+      {showShortcutModal && (
+        <ShortcutAddModal
+          onAdd={addShortcut}
+          onClose={() => setShowShortcutModal(false)}
+        />
+      )}
 
       {/* Projects */}
       <div style={cardStyle}>

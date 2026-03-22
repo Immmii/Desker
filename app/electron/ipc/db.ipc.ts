@@ -1,5 +1,5 @@
 import type { IpcMain } from "electron";
-import { projectDb, taskDb, roomObjectDb, taskTodoDb, agentContextDb, timetableBlockDb, habitDb } from "../services/db.service";
+import { projectDb, taskDb, roomObjectDb, taskTodoDb, agentContextDb, timetableBlockDb, habitDb, shortcutDb } from "../services/db.service";
 
 export function registerDbHandlers(ipcMain: IpcMain) {
   // ── Projects ──
@@ -87,5 +87,20 @@ export function registerDbHandlers(ipcMain: IpcMain) {
 
   ipcMain.handle("db:habitLogs:toggle", (_, habitId: string, date: string) =>
     habitDb.toggleLog(habitId, date)
+  );
+
+  // ── Shortcuts ──
+  ipcMain.handle("db:shortcuts:getAll", () => shortcutDb.getAll());
+
+  ipcMain.handle("db:shortcuts:add", (_, name: string, url: string) =>
+    shortcutDb.add(name, url)
+  );
+
+  ipcMain.handle("db:shortcuts:remove", (_, id: string) =>
+    shortcutDb.remove(id)
+  );
+
+  ipcMain.handle("db:shortcuts:reorder", (_, ids: string[]) =>
+    shortcutDb.reorder(ids)
   );
 }
