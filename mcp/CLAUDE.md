@@ -13,6 +13,9 @@
 - `desker_create_task` — 새 태스크 생성 (project_id, title 필수)
 - `desker_update_task` — 태스크 수정 (status를 todo/in_progress/done으로 변경 등)
 - `desker_create_project` — 새 프로젝트 생성
+- `desker_list_shortcuts` — 바로가기(북마크) 목록 조회
+- `desker_add_shortcut` — 새 바로가기 추가 (name, url 필수)
+- `desker_remove_shortcut` — 바로가기 삭제 (shortcut_id 필수)
 
 ## 행동 규칙
 

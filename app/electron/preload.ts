@@ -41,6 +41,11 @@ const api = {
     reorderHabit: (id: string, sortOrder: number) => ipcRenderer.invoke("db:habits:reorder", id, sortOrder),
     getHabitLogs: (weekStart: string, weekEnd: string) => ipcRenderer.invoke("db:habitLogs:get", weekStart, weekEnd),
     toggleHabitLog: (habitId: string, date: string) => ipcRenderer.invoke("db:habitLogs:toggle", habitId, date),
+
+    getShortcuts: () => ipcRenderer.invoke("db:shortcuts:getAll"),
+    addShortcut: (name: string, url: string) => ipcRenderer.invoke("db:shortcuts:add", name, url),
+    removeShortcut: (id: string) => ipcRenderer.invoke("db:shortcuts:remove", id),
+    reorderShortcuts: (ids: string[]) => ipcRenderer.invoke("db:shortcuts:reorder", ids),
   },
 
   // ── PTY Terminal ──

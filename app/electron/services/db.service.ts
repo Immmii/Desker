@@ -136,6 +136,17 @@ function runMigrations() {
       UNIQUE(habit_id, date)
     );
   `);
+
+  // shortcuts table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shortcuts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+  `);
 }
 
 function seedDefaults() {
@@ -575,5 +586,33 @@ export const habitDb = {
       db.prepare("INSERT INTO habit_logs (id, habit_id, date, done) VALUES (?, ?, ?, 1)").run(id, habitId, date);
       return 1;
     }
+  },
+};
+
+// ── Shortcuts ──
+export const shortcutDb = {
+  getAll: () =>
+    db.prepare("SELECT * FROM shortcuts ORDER BY sort_order ASC").all(),
+
+  add: (name: string, url: string) => {
+    const id = genId();
+    const now = new Date().toISOString();
+    const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) as m FROM shortcuts").get() as { m: number };
+    db.prepare(
+      "INSERT INTO shortcuts (id, name, url, sort_order, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).run(id, name, url, maxOrder.m + 1, now);
+    return db.prepare("SELECT * FROM shortcuts WHERE id = ?").get(id);
+  },
+
+  remove: (id: string) => {
+    db.prepare("DELETE FROM shortcuts WHERE id = ?").run(id);
+  },
+
+  reorder: (ids: string[]) => {
+    const tx = db.transaction(() => {
+      const stmt = db.prepare("UPDATE shortcuts SET sort_order = ? WHERE id = ?");
+      ids.forEach((id, i) => stmt.run(i, id));
+    });
+    tx();
   },
 };

@@ -141,6 +141,82 @@ function SortableTodoItem({ todo, onToggle, onRemove }: { todo: TodoItem; onTogg
   );
 }
 
+function ProjectBadgeDropdown({
+  projects,
+  selectedProjectId,
+  onSelect,
+}: {
+  projects: { id: string; name: string; icon: string; color: string }[];
+  selectedProjectId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = projects.find((p) => p.id === selectedProjectId);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  if (!selected) return null;
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block", marginBottom: 8 }}>
+      <span
+        onMouseEnter={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          fontSize: 12, padding: "3px 10px", borderRadius: 6,
+          background: selected.color + "20", color: selected.color,
+          fontWeight: 500, cursor: "pointer",
+          border: open ? `1px solid ${selected.color}40` : "1px solid transparent",
+          transition: "border-color 0.15s",
+        }}
+      >
+        {selected.icon} {selected.name} <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+      </span>
+
+      {open && (
+        <div
+          onMouseLeave={() => setOpen(false)}
+          style={{
+            position: "absolute", top: "calc(100% + 4px)", left: 0,
+            minWidth: 200, background: "var(--color-bg-secondary)",
+            border: "1px solid var(--color-border)", borderRadius: 10,
+            padding: 4, zIndex: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+            maxHeight: 200, overflowY: "auto",
+          }}
+        >
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => { onSelect(p.id); setOpen(false); }}
+              style={{
+                padding: "7px 10px", borderRadius: 7, fontSize: 13, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 8,
+                background: p.id === selectedProjectId ? "var(--color-bg-tertiary, rgba(255,255,255,0.06))" : "transparent",
+                transition: "background 0.12s",
+              }}
+              className="text-text-primary hover:bg-white/5"
+            >
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: p.color, flexShrink: 0,
+              }} />
+              <span>{p.icon} {p.name}</span>
+              {p.id === selectedProjectId && <span style={{ marginLeft: "auto", fontSize: 11, opacity: 0.5 }}>✓</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface TaskDetailModalProps {
   taskId: string;
   onClose: () => void;
@@ -161,6 +237,7 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
   const [priority, setPriority] = useState<TaskPriority>(task?.priority ?? "medium");
   const [startDate, setStartDate] = useState(task?.startDate ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  const [selectedProjectId, setSelectedProjectId] = useState(task?.projectId ?? "");
 
   // Todos (saved immediately — separate from task fields)
   const [todos, setTodos] = useState<TodoItem[]>([]);
@@ -209,7 +286,8 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
     status !== task.status ||
     priority !== task.priority ||
     (startDate || null) !== (task.startDate || null) ||
-    (dueDate || null) !== (task.dueDate || null);
+    (dueDate || null) !== (task.dueDate || null) ||
+    selectedProjectId !== task.projectId;
 
   // ── Save all changes ──
   const handleSave = async () => {
@@ -221,6 +299,7 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
       priority,
       startDate: startDate || null,
       dueDate: dueDate || null,
+      projectId: selectedProjectId,
     });
     onClose();
   };
@@ -323,20 +402,12 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
           ✕
         </button>
 
-        {/* Header: Project badge + Title */}
-        {project && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span
-              style={{
-                fontSize: 12, padding: "3px 10px", borderRadius: 6,
-                background: project.color + "20", color: project.color,
-                fontWeight: 500,
-              }}
-            >
-              {project.icon} {project.name}
-            </span>
-          </div>
-        )}
+        {/* Header: Project badge with hover dropdown */}
+        <ProjectBadgeDropdown
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onSelect={setSelectedProjectId}
+        />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

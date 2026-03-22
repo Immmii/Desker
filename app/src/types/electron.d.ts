@@ -68,6 +68,14 @@ interface HabitLogRow {
   done: number;
 }
 
+interface ShortcutRow {
+  id: string;
+  name: string;
+  url: string;
+  sort_order: number;
+  created_at: string;
+}
+
 interface DotArtRow {
   id: string;
   name: string;
@@ -127,6 +135,11 @@ export interface DeskerAPI {
     reorderHabit(id: string, sortOrder: number): Promise<void>;
     getHabitLogs(weekStart: string, weekEnd: string): Promise<HabitLogRow[]>;
     toggleHabitLog(habitId: string, date: string): Promise<number>;
+
+    getShortcuts(): Promise<ShortcutRow[]>;
+    addShortcut(name: string, url: string): Promise<ShortcutRow>;
+    removeShortcut(id: string): Promise<void>;
+    reorderShortcuts(ids: string[]): Promise<void>;
   };
 
   dotart: {
