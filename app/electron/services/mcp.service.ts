@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 
@@ -11,11 +11,13 @@ interface McpServer {
   url?: string;
 }
 
-interface McpSettings {
+interface ClaudeJson {
   mcpServers?: Record<string, McpServer>;
+  [key: string]: unknown;
 }
 
-const SETTINGS_PATH = path.join(homedir(), ".claude", "settings.json");
+// ~/.claude.json — User MCPs (root mcpServers)
+const CLAUDE_JSON_PATH = path.join(homedir(), ".claude.json");
 
 function runClaude(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -24,6 +26,19 @@ function runClaude(args: string[]): Promise<string> {
       else resolve(stdout.trim());
     });
   });
+}
+
+async function readClaudeJson(): Promise<ClaudeJson> {
+  try {
+    const raw = await readFile(CLAUDE_JSON_PATH, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+async function writeClaudeJson(data: ClaudeJson): Promise<void> {
+  await writeFile(CLAUDE_JSON_PATH, JSON.stringify(data, null, 2), "utf-8");
 }
 
 export const mcpService = {
@@ -37,24 +52,19 @@ export const mcpService = {
     }
   },
 
-  /** ~/.claude/settings.json에서 mcpServers 읽기 */
+  /** ~/.claude.json에서 User MCPs 읽기 */
   list: async (): Promise<Record<string, McpServer>> => {
-    try {
-      const raw = await readFile(SETTINGS_PATH, "utf-8");
-      const settings: McpSettings = JSON.parse(raw);
-      return settings.mcpServers ?? {};
-    } catch {
-      return {};
-    }
+    const data = await readClaudeJson();
+    return data.mcpServers ?? {};
   },
 
-  /** stdio 타입 MCP 서버 추가 (npx 패키지 + env) */
+  /** stdio 타입 MCP 서버 추가 (--scope user → User MCPs) */
   add: async (
     name: string,
     npmPackage: string,
     env?: Record<string, string>
   ): Promise<void> => {
-    const args = ["mcp", "add", name];
+    const args = ["mcp", "add", "--scope", "user", name];
     if (env) {
       for (const [k, v] of Object.entries(env)) {
         args.push("-e", `${k}=${v}`);
@@ -64,13 +74,31 @@ export const mcpService = {
     await runClaude(args);
   },
 
-  /** HTTP 타입 MCP 서버 추가 */
+  /** HTTP 타입 MCP 서버 추가 (--scope user) */
   addHttp: async (name: string, url: string): Promise<void> => {
-    await runClaude(["mcp", "add", "--transport", "http", name, url]);
+    await runClaude(["mcp", "add", "--transport", "http", "--scope", "user", name, url]);
   },
 
-  /** MCP 서버 제거 */
+  /** MCP 서버 제거 (--scope user) */
   remove: async (name: string): Promise<void> => {
-    await runClaude(["mcp", "remove", name]);
+    await runClaude(["mcp", "remove", "--scope", "user", name]);
+  },
+
+  /** MCP 서버의 env 값을 직접 업데이트 (~/.claude.json 수정) */
+  updateEnv: async (
+    name: string,
+    env: Record<string, string>
+  ): Promise<boolean> => {
+    try {
+      const data = await readClaudeJson();
+      const server = data.mcpServers?.[name];
+      if (!server) return false;
+
+      server.env = { ...server.env, ...env };
+      await writeClaudeJson(data);
+      return true;
+    } catch {
+      return false;
+    }
   },
 };
