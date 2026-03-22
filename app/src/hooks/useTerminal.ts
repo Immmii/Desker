@@ -110,7 +110,12 @@ export function useTerminal(
       const fit = new FitAddon();
       term.loadAddon(fit);
       fitRef.current = fit;
-      setTimeout(() => fit.fit(), 50);
+      // Multiple fit attempts to handle layout settling
+      requestAnimationFrame(() => {
+        try { fit.fit(); } catch {}
+        setTimeout(() => { try { fit.fit(); } catch {} }, 100);
+        setTimeout(() => { try { fit.fit(); } catch {} }, 300);
+      });
       return;
     }
 
@@ -155,11 +160,20 @@ export function useTerminal(
       spawnedRef.current = true;
       const api = window.deskerAPI;
 
-      // Wait for layout to settle, fit terminal, then spawn with actual dimensions
-      setTimeout(() => {
+      // Wait until container has proper dimensions, then spawn
+      const doSpawn = () => {
         try { fit.fit(); } catch {}
         const cols = term!.cols;
         const rows = term!.rows;
+
+        // If container isn't ready yet (too narrow), retry
+        if (cols < 20 && containerRef.current) {
+          const w = containerRef.current.clientWidth;
+          if (w < 100) {
+            setTimeout(doSpawn, 100);
+            return;
+          }
+        }
 
       if (mode === "ai" && aiModel) {
         // AI CLI mode
@@ -254,7 +268,9 @@ export function useTerminal(
           disposable.dispose();
         };
       }
-      }, 150); // end setTimeout — wait for layout before spawn
+      };
+      // Wait for layout to settle, then spawn
+      setTimeout(doSpawn, 150);
     }
 
     // Don't dispose on unmount — keep for tab switching

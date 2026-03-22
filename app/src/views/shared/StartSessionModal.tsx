@@ -3,6 +3,36 @@ import { useAiVM } from "../../viewmodels/ai.vm";
 import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../viewmodels/session.vm";
 import { AGENT_PRESETS } from "../../viewmodels/session.vm";
 
+// ── Agent Role SVG Icons ──
+function AgentIcon({ role, color, size = 18 }: { role: string; color: string; size?: number }) {
+  const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "1.8", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+
+  switch (role) {
+    case "task": // 타겟/체크
+      return <svg {...props}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" fill={color} /></svg>;
+    case "research": // 돋보기+문서
+      return <svg {...props}><circle cx="10" cy="10" r="6" /><line x1="14.5" y1="14.5" x2="20" y2="20" /><line x1="10" y1="7" x2="10" y2="13" /><line x1="7" y1="10" x2="13" y2="10" /></svg>;
+    case "docs": // 문서+펜
+      return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14,2 14,8 20,8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="12" y2="17" /></svg>;
+    case "planning": // 설계도/클립보드
+      return <svg {...props}><rect x="4" y="4" width="16" height="18" rx="2" /><line x1="4" y1="10" x2="20" y2="10" /><line x1="12" y1="4" x2="12" y2="22" /><path d="M9 2h6v3H9z" fill={color} stroke={color} /></svg>;
+    case "client": // 모니터+브러시
+      return <svg {...props}><rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" /><path d="M7 8l3 3-3 3" /><line x1="12" y1="14" x2="17" y2="14" /></svg>;
+    case "server": // 서버 랙
+      return <svg {...props}><rect x="3" y="2" width="18" height="6" rx="1" /><rect x="3" y="10" width="18" height="6" rx="1" /><circle cx="7" cy="5" r="1" fill={color} /><circle cx="7" cy="13" r="1" fill={color} /><line x1="17" y1="18" x2="17" y2="22" /><line x1="7" y1="18" x2="7" y2="22" /></svg>;
+    case "testing": // 비커/플라스크
+      return <svg {...props}><path d="M9 3h6v5l4 9a1 1 0 0 1-.9 1.4H5.9A1 1 0 0 1 5 17l4-9V3" /><line x1="9" y1="3" x2="15" y2="3" strokeWidth="2.5" /><path d="M7 15h10" strokeDasharray="2 2" /></svg>;
+    case "qa": // 체크 쉴드
+      return <svg {...props}><path d="M12 2l8 4v6c0 5.5-3.8 8.2-8 10-4.2-1.8-8-4.5-8-10V6l8-4z" /><path d="M8 12l3 3 5-6" /></svg>;
+    case "devops": // git branch + 기어
+      return <svg {...props}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><circle cx="6" cy="18" r="2" /><path d="M6 8v4c0 2 2 4 4 4h4" /><line x1="6" y1="8" x2="6" y2="16" /></svg>;
+    case "security": // 자물쇠
+      return <svg {...props}><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /><circle cx="12" cy="16" r="1" fill={color} /></svg>;
+    default:
+      return <svg {...props}><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 3" /></svg>;
+  }
+}
+
 interface StartSessionModalProps {
   taskTitle: string;
   onStart: (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => void;
@@ -186,7 +216,15 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
                   cursor: "pointer", fontFamily: "Pretendard, sans-serif",
                 }}
               >
-                📋 일반
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <line x1="8" y1="9" x2="16" y2="9" />
+                    <line x1="8" y1="13" x2="14" y2="13" />
+                    <line x1="8" y1="17" x2="11" y2="17" />
+                  </svg>
+                  일반
+                </span>
               </button>
               <button
                 onClick={() => setSelectedEnv("development")}
@@ -198,7 +236,14 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
                   cursor: "pointer", fontFamily: "Pretendard, sans-serif",
                 }}
               >
-                💻 개발
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="16,18 22,12 16,6" />
+                    <polyline points="8,6 2,12 8,18" />
+                    <line x1="14" y1="4" x2="10" y2="20" />
+                  </svg>
+                  개발
+                </span>
               </button>
             </div>
 
@@ -216,13 +261,13 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
                   className="hover:border-accent/50 group"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{
-                      width: 32, height: 32, borderRadius: 8, fontSize: 18,
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       background: `${preset.color}20`,
                     }}>
-                      {preset.icon}
-                    </span>
+                      <AgentIcon role={preset.role} color={preset.color} size={18} />
+                    </div>
                     <div>
                       <div style={{ fontSize: 14, fontWeight: 600 }} className="text-text-primary group-hover:text-accent transition-colors">
                         {preset.label}
