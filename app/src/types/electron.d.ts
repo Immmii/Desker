@@ -140,6 +140,7 @@ export interface DeskerAPI {
     connect(service: string): Promise<void>;
     disconnect(service: string, mcpName?: string): Promise<void>;
     getStatus(service: string): Promise<{ id: string; service: string; access_token: string } | null>;
+    refresh(service: string): Promise<{ access_token: string; expires_at: string | null }>;
     connectWithToken(service: string, mcpName: string, mcpPackage: string, env: Record<string, string>, account?: string): Promise<void>;
   };
 

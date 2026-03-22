@@ -25,6 +25,7 @@ function PluginCard({
   userEmail,
   onConnect,
   onDisconnect,
+  onTokenUpdate,
 }: {
   plugin: PluginDef;
   connected: boolean;
@@ -32,6 +33,7 @@ function PluginCard({
   userEmail?: string | null;
   onConnect: () => void;
   onDisconnect: () => void;
+  onTokenUpdate: () => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -92,6 +94,17 @@ function PluginCard({
                 }}
               >
                 <button
+                  onClick={() => { onTokenUpdate(); setShowMenu(false); }}
+                  style={{
+                    display: "block", width: "100%", padding: "10px 16px",
+                    fontSize: 13, border: "none", background: "transparent",
+                    textAlign: "left", cursor: "pointer", color: "var(--color-text-primary)",
+                  }}
+                  className="hover:bg-bg-hover"
+                >
+                  토큰 업데이트
+                </button>
+                <button
                   onClick={() => { onConnect(); setShowMenu(false); }}
                   style={{
                     display: "block", width: "100%", padding: "10px 16px",
@@ -139,7 +152,7 @@ export default function PluginsPage() {
   const [search, setSearch] = useState("");
   const {
     connections, connecting, error, tokenModalService,
-    loadConnections, connect, connectWithToken, disconnect, closeTokenModal, clearError,
+    loadConnections, connect, connectWithToken, disconnect, openTokenModal, closeTokenModal, clearError,
   } = usePluginVM();
 
   useEffect(() => { loadConnections(); }, [loadConnections]);
@@ -153,6 +166,10 @@ export default function PluginsPage() {
   const filtered = PLUGINS.filter((p) => {
     if (search) return p.name.toLowerCase().includes(search.toLowerCase());
     return tab === "전체" ? true : p.category === "추천";
+  }).sort((a, b) => {
+    const aConn = connections[a.name] ? 1 : 0;
+    const bConn = connections[b.name] ? 1 : 0;
+    return bConn - aConn;
   });
 
   return (
@@ -201,6 +218,7 @@ export default function PluginsPage() {
             userEmail={connections[plugin.name]?.userEmail}
             onConnect={() => connect(plugin.name)}
             onDisconnect={() => disconnect(plugin.name)}
+            onTokenUpdate={() => openTokenModal(plugin.name)}
           />
         ))}
       </div>

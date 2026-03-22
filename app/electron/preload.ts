@@ -142,6 +142,7 @@ const api = {
     disconnect: (service: string, mcpName?: string) =>
       ipcRenderer.invoke("oauth:disconnect", service, mcpName),
     getStatus: (service: string) => ipcRenderer.invoke("oauth:getStatus", service),
+    refresh: (service: string) => ipcRenderer.invoke("oauth:refresh", service),
     connectWithToken: (service: string, mcpName: string, mcpPackage: string, env: Record<string, string>, account?: string) =>
       ipcRenderer.invoke("oauth:connectWithToken", service, mcpName, mcpPackage, env, account),
   },

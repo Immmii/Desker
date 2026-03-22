@@ -4,6 +4,7 @@ import https from "https";
 import { URL } from "url";
 import crypto from "crypto";
 import { mcpConnectionDb } from "./db.service";
+import { mcpService } from "./mcp.service";
 
 interface OAuthConfig {
   clientId: string; // 실제 등록된 Client ID (빈 문자열이면 시뮬레이션)
@@ -78,6 +79,60 @@ const OAUTH_CONFIGS: Record<string, OAuthConfig> = {
     authUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
     scopes: ["Files.ReadWrite", "offline_access"],
+  },
+};
+
+// 서비스명 → MCP 설정 매핑 (토큰 갱신 시 settings.json env 업데이트용)
+interface McpTokenMapping {
+  mcpName: string;
+  buildEnv: (accessToken: string) => Record<string, string>;
+}
+
+const MCP_TOKEN_MAPPINGS: Record<string, McpTokenMapping> = {
+  Notion: {
+    mcpName: "notion",
+    buildEnv: (token) => ({
+      OPENAPI_MCP_HEADERS: JSON.stringify({
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": "2022-06-28",
+      }),
+    }),
+  },
+  Slack: {
+    mcpName: "slack",
+    buildEnv: (token) => ({ SLACK_BOT_TOKEN: token }),
+  },
+  GitHub: {
+    mcpName: "github",
+    buildEnv: (token) => ({ GITHUB_PERSONAL_ACCESS_TOKEN: token }),
+  },
+  Figma: {
+    mcpName: "figma",
+    buildEnv: (token) => ({ FIGMA_API_KEY: token }),
+  },
+  Linear: {
+    mcpName: "linear",
+    buildEnv: (token) => ({ LINEAR_API_KEY: token }),
+  },
+  Gmail: {
+    mcpName: "google-gmail",
+    buildEnv: (token) => ({ GOOGLE_ACCESS_TOKEN: token }),
+  },
+  "Google Calendar": {
+    mcpName: "google-calendar",
+    buildEnv: (token) => ({ GOOGLE_ACCESS_TOKEN: token }),
+  },
+  "Google Docs": {
+    mcpName: "google-docs",
+    buildEnv: (token) => ({ GOOGLE_ACCESS_TOKEN: token }),
+  },
+  Canva: {
+    mcpName: "canva",
+    buildEnv: (token) => ({ CANVA_ACCESS_TOKEN: token }),
+  },
+  "Microsoft Word": {
+    mcpName: "microsoft-word",
+    buildEnv: (token) => ({ MICROSOFT_ACCESS_TOKEN: token }),
   },
 };
 
@@ -228,7 +283,85 @@ export const oauthService = {
     return { success: true, service, email: tokenData.email as string | undefined };
   },
 
+  refreshToken: async (service: string): Promise<boolean> => {
+    const config = OAUTH_CONFIGS[service];
+    if (!config) return false;
+
+    const conn = mcpConnectionDb.get(service) as {
+      refresh_token?: string;
+      client_id?: string;
+    } | undefined;
+    if (!conn?.refresh_token) return false;
+
+    try {
+      const body: Record<string, string> = {
+        grant_type: "refresh_token",
+        refresh_token: conn.refresh_token,
+        client_id: config.clientId,
+      };
+
+      // Notion uses Basic auth for token refresh
+      const headers: Record<string, string> = {};
+      if (service === "Notion" && config.clientId) {
+        headers["Authorization"] = `Basic ${Buffer.from(`${config.clientId}:`).toString("base64")}`;
+      }
+
+      const tokenData = await postJSON(config.tokenUrl, body, headers);
+      const accessToken = (tokenData.access_token as string) ?? "";
+      if (!accessToken) return false;
+
+      mcpConnectionDb.upsert({
+        service,
+        access_token: accessToken,
+        refresh_token: (tokenData.refresh_token as string) ?? conn.refresh_token,
+        token_type: (tokenData.token_type as string) ?? "Bearer",
+        expires_at: tokenData.expires_in
+          ? new Date(Date.now() + Number(tokenData.expires_in) * 1000).toISOString()
+          : undefined,
+      });
+
+      // MCP settings.json의 env도 새 토큰으로 업데이트
+      const mapping = MCP_TOKEN_MAPPINGS[service];
+      if (mapping) {
+        await mcpService.updateEnv(mapping.mcpName, mapping.buildEnv(accessToken));
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Get connection, auto-refresh if token expired */
+  getConnection: async (service: string) => {
+    const conn = mcpConnectionDb.get(service) as {
+      expires_at?: string;
+      refresh_token?: string;
+      [key: string]: unknown;
+    } | undefined;
+    if (!conn) return null;
+
+    // Check expiry (refresh 5 minutes before actual expiry)
+    if (conn.expires_at) {
+      const expiresAt = new Date(conn.expires_at).getTime();
+      const now = Date.now();
+      if (now > expiresAt - 5 * 60 * 1000) {
+        // Token expired or about to expire
+        if (conn.refresh_token) {
+          const refreshed = await oauthService.refreshToken(service);
+          if (refreshed) {
+            return mcpConnectionDb.get(service);
+          }
+        }
+        // Couldn't refresh — return null to force re-auth
+        return null;
+      }
+    }
+
+    return conn;
+  },
+
+  getConnectionSync: (service: string) => mcpConnectionDb.get(service),
   disconnect: (service: string) => mcpConnectionDb.remove(service),
-  getConnection: (service: string) => mcpConnectionDb.get(service),
   getAllConnections: () => mcpConnectionDb.getAll(),
 };
