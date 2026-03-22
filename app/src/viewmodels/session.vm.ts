@@ -147,42 +147,92 @@ interface SessionViewModel {
 
 let nextId = 1;
 
+// ── Persistence helpers ──
+const STORAGE_KEY = "desker-sessions";
+const ACTIVE_KEY = "desker-active-session";
+
+function loadSessions(): { sessions: TerminalSession[]; activeSessionId: string | null } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { sessions: [], activeSessionId: null };
+    const sessions: TerminalSession[] = JSON.parse(raw).map((s: TerminalSession) => ({
+      ...s,
+      state: "idle" as const, // PTY is gone after restart
+    }));
+    if (sessions.length > 0) {
+      const maxId = Math.max(...sessions.map((s) => {
+        const m = s.id.match(/^session-(\d+)$/);
+        return m ? Number(m[1]) : 0;
+      }));
+      nextId = maxId + 1;
+    }
+    const activeId = localStorage.getItem(ACTIVE_KEY);
+    const activeSessionId = sessions.some((s) => s.id === activeId) ? activeId : sessions[0]?.id ?? null;
+    return { sessions, activeSessionId };
+  } catch {
+    return { sessions: [], activeSessionId: null };
+  }
+}
+
+function saveSessions(sessions: TerminalSession[], activeSessionId: string | null) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+  if (activeSessionId) {
+    localStorage.setItem(ACTIVE_KEY, activeSessionId);
+  } else {
+    localStorage.removeItem(ACTIVE_KEY);
+  }
+}
+
+const initial = loadSessions();
+
 export const useSessionVM = create<SessionViewModel>((set) => ({
-  sessions: [],
-  activeSessionId: null,
+  sessions: initial.sessions,
+  activeSessionId: initial.activeSessionId,
 
   createSession: (session) => {
     const id = `session-${nextId++}`;
-    set((s) => ({
-      sessions: [
-        ...s.sessions,
-        {
-          ...session,
-          id,
-          state: "working",
-          startedAt: new Date().toISOString(),
-        },
-      ],
-      activeSessionId: id,
-    }));
+    set((s) => {
+      const next = {
+        sessions: [
+          ...s.sessions,
+          {
+            ...session,
+            id,
+            state: "working" as const,
+            startedAt: new Date().toISOString(),
+          },
+        ],
+        activeSessionId: id,
+      };
+      saveSessions(next.sessions, next.activeSessionId);
+      return next;
+    });
     return id;
   },
 
-  setActiveSession: (id) => set({ activeSessionId: id }),
+  setActiveSession: (id) =>
+    set((s) => {
+      saveSessions(s.sessions, id);
+      return { activeSessionId: id };
+    }),
 
   removeSession: (id) =>
-    set((s) => ({
-      sessions: s.sessions.filter((ss) => ss.id !== id),
-      activeSessionId:
+    set((s) => {
+      const sessions = s.sessions.filter((ss) => ss.id !== id);
+      const activeSessionId =
         s.activeSessionId === id
           ? s.sessions.find((ss) => ss.id !== id)?.id ?? null
-          : s.activeSessionId,
-    })),
+          : s.activeSessionId;
+      saveSessions(sessions, activeSessionId);
+      return { sessions, activeSessionId };
+    }),
 
   updateSessionState: (id, state) =>
-    set((s) => ({
-      sessions: s.sessions.map((ss) =>
+    set((s) => {
+      const sessions = s.sessions.map((ss) =>
         ss.id === id ? { ...ss, state } : ss
-      ),
-    })),
+      );
+      saveSessions(sessions, s.activeSessionId);
+      return { sessions };
+    }),
 }));
