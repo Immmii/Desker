@@ -3,6 +3,7 @@ productName: Desker
 mac:
   target: dmg
   category: public.app-category.productivity
+  icon: build/icon.icns
 files:
   - dist/**/*
   - package.json
