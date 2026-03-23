@@ -157,7 +157,7 @@ function TimeAssignModal({
   );
 }
 
-function Timetable() {
+function Timetable({ onSavedBlockCountChange }: { onSavedBlockCountChange?: (count: number) => void }) {
   const now = useClock();
   const { tasks, projects } = useProjectVM();
   const sessions = useSessionVM((s) => s.sessions);
@@ -170,6 +170,8 @@ function Timetable() {
     const todayStr = now.toISOString().slice(0, 10);
 
     for (const session of sessions) {
+      // 앱 재시작 후 복원된 idle 세션은 제외 (앱 꺼져있던 시간 포함 방지)
+      if (session.state === "idle") continue;
       const start = new Date(session.startedAt);
       // 오늘 세션만
       if (start.toISOString().slice(0, 10) !== todayStr) continue;
@@ -273,6 +275,37 @@ function Timetable() {
   // Merge: session blocks + manual blocks (manual takes priority)
   const blocks = useMemo(() => ({ ...sessionBlocks, ...manualBlocks }), [sessionBlocks, manualBlocks]);
 
+  // Ref for save handlers (beforeunload, periodic)
+  const blocksRef = useRef(blocks);
+  blocksRef.current = blocks;
+
+  // beforeunload: 앱 종료 전 현재 블록 DB 저장
+  useEffect(() => {
+    const handler = () => {
+      if (Object.keys(blocksRef.current).length > 0) {
+        saveBlocksToDb(blocksRef.current);
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [saveBlocksToDb]);
+
+  // 주기적 DB 저장 (60초마다, 크래시 대비)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const workingSessions = sessions.filter(s => s.state === "working");
+      if (workingSessions.length > 0 && Object.keys(blocksRef.current).length > 0) {
+        saveBlocksToDb(blocksRef.current);
+      }
+    }, 60000);
+    return () => clearInterval(id);
+  }, [sessions, saveBlocksToDb]);
+
+  // 저장된 블록 수 → TimePanel에 전달 (총 작업시간 계산용)
+  useEffect(() => {
+    onSavedBlockCountChange?.(Object.keys(manualBlocks).length);
+  }, [manualBlocks, onSavedBlockCountChange]);
+
   // Drag state
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef<{ hour: number; slot: number } | null>(null);
@@ -308,60 +341,79 @@ function Timetable() {
     return ci >= Math.min(si, ei) && ci <= Math.max(si, ei);
   }, [dragging, dragCurrent]);
 
-  const handleMouseDown = (hour: number, slot: number) => {
-    // If already has a manual block, remove it (session blocks can't be removed)
+  const handleMouseDown = (hour: number, slot: number, e: React.MouseEvent) => {
     const key = cellKey(hour, slot);
-    if (manualBlocks[key]) {
-      setManualBlocks((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        saveBlocksToDb(next);
-        return next;
-      });
+    const block = blocks[key];
+    if (block) {
+      e.stopPropagation();
+      if (block.taskId && block.taskId !== "quick") {
+        // 태스크 연결 블록 → TaskDetailModal
+        setDetailTaskId(block.taskId);
+      } else {
+        // 빠른 시작 블록 → 태스크 할당 모달
+        const quickCells = Object.entries(blocks)
+          .filter(([, b]) => b.taskId === "quick")
+          .map(([k]) => k);
+        pendingCells.current = quickCells;
+        const indices = quickCells.map(k => { const [h, m] = parseCellKey(k); return cellIndex(h, m); });
+        const minIdx = Math.min(...indices);
+        const maxIdx = Math.max(...indices);
+        setAssignRange({
+          start: `${Math.floor(minIdx / 60)}:${minIdx % 60}`,
+          end: `${Math.floor((maxIdx + 5) / 60)}:${(maxIdx + 5) % 60}`,
+        });
+      }
       return;
     }
-    // Don't start drag on session blocks
-    if (sessionBlocks[key]) return;
     setDragging(true);
+    draggingRef.current = true;
     dragStart.current = { hour, slot };
+    dragCurrentRef.current = { hour, slot };
     setDragCurrent({ hour, slot });
   };
 
   const handleMouseEnter = (hour: number, slot: number) => {
-    if (!dragging) return;
+    if (!draggingRef.current) return;
+    dragCurrentRef.current = { hour, slot };
     setDragCurrent({ hour, slot });
   };
 
-  const handleMouseUp = () => {
-    if (!dragging || !dragStart.current || !dragCurrent) {
+  const draggingRef = useRef(false);
+  const dragCurrentRef = useRef<{ hour: number; slot: number } | null>(null);
+
+  const handleMouseUp = useCallback(() => {
+    if (!draggingRef.current || !dragStart.current || !dragCurrentRef.current) {
       setDragging(false);
+      draggingRef.current = false;
       return;
     }
-    const cells = getDragCells(dragStart.current, dragCurrent);
+    const cells = getDragCells(dragStart.current, dragCurrentRef.current);
     pendingCells.current = cells;
 
     const startKey = cellKey(dragStart.current.hour, dragStart.current.slot);
     // End time: last cell + 5 minutes
-    const endHour = dragCurrent.hour;
-    const endMinute = dragCurrent.slot * 5 + 5;
+    const endHour = dragCurrentRef.current.hour;
+    const endMinute = dragCurrentRef.current.slot * 5 + 5;
     const adjHour = endMinute >= 60 ? endHour + 1 : endHour;
     const adjMinute = endMinute >= 60 ? endMinute - 60 : endMinute;
     const endKey = `${adjHour}:${adjMinute}`;
 
     setAssignRange({ start: startKey, end: endKey });
     setDragging(false);
+    draggingRef.current = false;
     dragStart.current = null;
+    dragCurrentRef.current = null;
     setDragCurrent(null);
-  };
+  }, [getDragCells]);
 
   // Global mouseup in case mouse leaves the table
   useEffect(() => {
     const handler = () => {
-      if (dragging) handleMouseUp();
+      if (draggingRef.current) handleMouseUp();
     };
     window.addEventListener("mouseup", handler);
     return () => window.removeEventListener("mouseup", handler);
-  });
+  }, [handleMouseUp]);
 
   const handleAssign = (taskId: string) => {
     const project = projects.find((p) => {
@@ -383,6 +435,9 @@ function Timetable() {
 
   // Get task name for tooltip
   const getTaskName = (taskId: string) => tasks.find((t) => t.id === taskId)?.title ?? "";
+
+  // TaskDetailModal state (태스크 연결 블록 클릭 시)
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
   return (
     <div style={{ fontSize: 11, fontFamily: "Pretendard, sans-serif", userSelect: "none" }}>
@@ -450,7 +505,7 @@ function Timetable() {
                 return (
                   <div
                     key={s}
-                    onMouseDown={() => handleMouseDown(h, s)}
+                    onMouseDown={(e) => handleMouseDown(h, s, e)}
                     onMouseEnter={() => handleMouseEnter(h, s)}
                     title={block ? getTaskName(block.taskId) : undefined}
                     style={{
@@ -476,6 +531,12 @@ function Timetable() {
         })}
       </div>
 
+      {/* 태스크 연결 블록 클릭 → TaskDetailModal */}
+      {detailTaskId && (
+        <TaskDetailModal taskId={detailTaskId} onClose={() => setDetailTaskId(null)} />
+      )}
+
+      {/* 빠른 시작 블록 클릭 또는 드래그 → 태스크 할당 모달 */}
       {assignRange && (
         <TimeAssignModal
           startTime={assignRange.start}
@@ -893,13 +954,18 @@ export function TimePanel() {
   const now = useClock();
   const sessions = useSessionVM((s) => s.sessions);
   const todayStr = now.toISOString().slice(0, 10);
+  const [savedBlockCount, setSavedBlockCount] = useState(0);
 
-  // 오늘 세션들의 누적 작업시간
-  const totalMs = sessions.reduce((acc, s) => {
+  // Working 세션만 실시간 계산 (idle/복원 세션 제외)
+  const workingMs = sessions.reduce((acc, s) => {
+    if (s.state !== "working") return acc;
     const start = new Date(s.startedAt);
     if (start.toISOString().slice(0, 10) !== todayStr) return acc;
     return acc + (now.getTime() - start.getTime());
   }, 0);
+
+  // DB 저장된 블록 (종료된 세션) + 실시간 working 세션
+  const totalMs = workingMs + savedBlockCount * 5 * 60 * 1000;
   const totalMinutesAll = Math.floor(totalMs / 60000);
   const totalHours = Math.floor(totalMinutesAll / 60);
   const totalMinutes = totalMinutesAll % 60;
@@ -924,7 +990,7 @@ export function TimePanel() {
       <div style={{ height: 1 }} className="bg-border" />
 
       {/* Timetable */}
-      <Timetable />
+      <Timetable onSavedBlockCountChange={setSavedBlockCount} />
     </div>
   );
 }
