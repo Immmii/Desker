@@ -151,11 +151,15 @@ export default function PluginsPage() {
   const [tab, setTab] = useState<"전체" | "추천">("전체");
   const [search, setSearch] = useState("");
   const {
-    connections, connecting, error, tokenModalService,
+    connections, connecting, error, tokenModalService, discovered,
     loadConnections, connect, connectWithToken, disconnect, openTokenModal, closeTokenModal, clearError,
+    discoverExisting, importExisting,
   } = usePluginVM();
 
-  useEffect(() => { loadConnections(); }, [loadConnections]);
+  useEffect(() => {
+    loadConnections();
+    discoverExisting();
+  }, [loadConnections, discoverExisting]);
 
   useEffect(() => {
     if (!error) return;
@@ -207,6 +211,37 @@ export default function PluginsPage() {
           </span>
         )}
       </div>
+
+      {discovered.length > 0 && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 14,
+            padding: "14px 20px", borderRadius: 12, marginBottom: 16, maxWidth: 800,
+            border: "1px solid var(--color-accent)",
+            background: "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+          }}
+        >
+          <span style={{ fontSize: 20 }}>&#128268;</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }} className="text-text-primary">
+              기존 MCP 서버 {discovered.length}개 발견
+            </div>
+            <div style={{ fontSize: 13, marginTop: 2 }} className="text-text-secondary">
+              {discovered.map((d) => d.name).join(", ")} — {discovered.map((d) => d.source === "both" ? "Claude+Codex" : d.source === "claude" ? "Claude" : "Codex").filter((v, i, a) => a.indexOf(v) === i).join(", ")}에서 감지
+            </div>
+          </div>
+          <button
+            onClick={() => importExisting(discovered.map((d) => d.name))}
+            style={{
+              fontSize: 13, padding: "8px 20px", borderRadius: 8, border: "none",
+              fontWeight: 600, cursor: "pointer", flexShrink: 0,
+            }}
+            className="bg-accent text-white hover:opacity-90 transition-opacity"
+          >
+            모두 가져오기
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, maxWidth: 800 }}>
         {filtered.map((plugin) => (

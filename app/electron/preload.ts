@@ -159,6 +159,8 @@ const api = {
       ipcRenderer.invoke("mcp:add", name, npmPackage, env),
     addHttp: (name: string, url: string) => ipcRenderer.invoke("mcp:addHttp", name, url),
     remove: (name: string) => ipcRenderer.invoke("mcp:remove", name),
+    discover: () => ipcRenderer.invoke("mcp:discover"),
+    import: (names: string[]) => ipcRenderer.invoke("mcp:import", names),
   },
 
   // ── File System ──

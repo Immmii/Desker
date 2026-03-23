@@ -162,6 +162,8 @@ export interface DeskerAPI {
     add(name: string, npmPackage: string, env?: Record<string, string>): Promise<void>;
     addHttp(name: string, url: string): Promise<void>;
     remove(name: string): Promise<void>;
+    discover(): Promise<{ name: string; source: "claude" | "codex" | "both"; server: McpServer }[]>;
+    import(names: string[]): Promise<void>;
   };
 
   aiChat: {
