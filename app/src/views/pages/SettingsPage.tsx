@@ -26,13 +26,15 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.dataset.theme = getEffectiveTheme(mode);
 }
 
+const STORAGE_KEY_THEME = "desker:theme";
 const STORAGE_KEY_NICKNAME = "desker:nickname";
 const STORAGE_KEY_NOTIFICATIONS = "desker:notifications";
 const STORAGE_KEY_AUTOLAUNCH = "desker:autoLaunch";
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  mode: "light",
+  mode: (localStorage.getItem(STORAGE_KEY_THEME) as ThemeMode) || "light",
   setMode: (mode) => {
+    localStorage.setItem(STORAGE_KEY_THEME, mode);
     applyTheme(mode);
     set({ mode });
   },

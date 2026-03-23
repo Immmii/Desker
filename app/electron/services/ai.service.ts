@@ -7,16 +7,57 @@ export type AiModel = "claude" | "chatgpt";
 
 const aiSessions = new Map<string, pty.IPty>();
 
-function which(cmd: string): string | null {
+/** Cache the full login-shell PATH so we only resolve it once */
+let _cachedLoginEnv: Record<string, string> | null = null;
+function getLoginShellEnv(): Record<string, string> {
+  if (_cachedLoginEnv) return _cachedLoginEnv;
+  const shell = process.env.SHELL || "/bin/zsh";
   try {
-    return execSync(`which ${cmd}`, { encoding: "utf8" }).trim();
+    const raw = execSync(`${shell} -l -c 'env'`, { encoding: "utf8" });
+    const env: Record<string, string> = {};
+    for (const line of raw.split("\n")) {
+      const idx = line.indexOf("=");
+      if (idx > 0) env[line.substring(0, idx)] = line.substring(idx + 1);
+    }
+    _cachedLoginEnv = env;
+    return env;
   } catch {
+    return process.env as Record<string, string>;
+  }
+}
+
+function which(cmd: string): string | null {
+  // Packaged Electron apps don't inherit the user's shell PATH.
+  // Launch a login shell so .zshrc / .zprofile / .bash_profile are sourced.
+  const shell = process.env.SHELL || "/bin/zsh";
+  try {
+    // Use login shell (-l) to source user profile and get full PATH
+    return execSync(`${shell} -l -c 'which ${cmd}'`, {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    // Fallback: check common install locations directly
+    const commonPaths = [
+      `/usr/local/bin/${cmd}`,
+      `${process.env.HOME}/.local/bin/${cmd}`,
+      `${process.env.HOME}/.nvm/versions/node/*/bin/${cmd}`,
+      `/opt/homebrew/bin/${cmd}`,
+    ];
+    for (const p of commonPaths) {
+      // Handle glob-like paths (nvm)
+      try {
+        const resolved = execSync(`ls ${p} 2>/dev/null`, { encoding: "utf8" }).trim().split("\n")[0];
+        if (resolved && fs.existsSync(resolved)) return resolved;
+      } catch {
+        if (fs.existsSync(p)) return p;
+      }
+    }
     return null;
   }
 }
 
 export function checkAiAvailable(model: AiModel): boolean {
-  const binName = model === "claude" ? "claude" : "chatgpt";
+  const binName = model === "claude" ? "claude" : "codex";
   return which(binName) !== null;
 }
 
@@ -42,7 +83,7 @@ export function spawnAiCli(
   model: AiModel,
   options?: { cols?: number; rows?: number }
 ): pty.IPty {
-  const binName = model === "claude" ? "claude" : "chatgpt";
+  const binName = model === "claude" ? "claude" : "codex";
   const binPath = which(binName);
   if (!binPath) {
     throw new Error(`${binName} CLI not found. Install it first.`);
@@ -59,7 +100,7 @@ export function spawnAiCli(
     cols: options?.cols ?? 80,
     rows: options?.rows ?? 24,
     cwd,
-    env: process.env as Record<string, string>,
+    env: getLoginShellEnv(),
   });
 
   aiSessions.set(sessionId, aiProcess);
