@@ -36,4 +36,20 @@ export function registerMcpHandlers(ipcMain: IpcMain) {
       throw new Error(err instanceof Error ? err.message : String(err));
     }
   });
+
+  ipcMain.handle("mcp:discover", async () => {
+    try {
+      return await mcpService.discover();
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  ipcMain.handle("mcp:import", async (_, names: string[]) => {
+    try {
+      await mcpService.importServers(names);
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : String(err));
+    }
+  });
 }

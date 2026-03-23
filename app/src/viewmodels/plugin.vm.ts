@@ -12,12 +12,19 @@ export interface McpConnection {
   connectedAt: string;
 }
 
+interface DiscoveredMcp {
+  name: string;
+  source: "claude" | "codex" | "both";
+  server: { command?: string; args?: string[]; env?: Record<string, string> };
+}
+
 interface PluginViewModel {
   connections: Record<string, McpConnection>;
   connecting: string | null;
   loading: boolean;
   error: string | null;
   tokenModalService: string | null;
+  discovered: DiscoveredMcp[];
 
   loadConnections: () => Promise<void>;
   connect: (service: string) => void;
@@ -26,6 +33,8 @@ interface PluginViewModel {
   openTokenModal: (service: string) => void;
   closeTokenModal: () => void;
   clearError: () => void;
+  discoverExisting: () => Promise<void>;
+  importExisting: (names: string[]) => Promise<void>;
 }
 
 function toModel(row: {
@@ -56,6 +65,7 @@ export const usePluginVM = create<PluginViewModel>((set, get) => ({
   loading: false,
   error: null,
   tokenModalService: null,
+  discovered: [],
 
   loadConnections: async () => {
     set({ loading: true });
@@ -68,7 +78,7 @@ export const usePluginVM = create<PluginViewModel>((set, get) => ({
         connections[conn.service] = conn;
       }
 
-      // 2) ~/.claude/settings.json의 mcpServers 확인 → DB에 없지만 로컬에 있으면 반영
+      // 2) Desker mcp.json (source of truth) 확인 → DB에 없지만 등록되어 있으면 반영
       try {
         const mcpServers = await window.deskerAPI.mcp.list();
         const mcpNames = Object.keys(mcpServers);
@@ -154,4 +164,24 @@ export const usePluginVM = create<PluginViewModel>((set, get) => ({
   openTokenModal: (service) => set({ tokenModalService: service }),
   closeTokenModal: () => set({ tokenModalService: null }),
   clearError: () => set({ error: null }),
+
+  discoverExisting: async () => {
+    try {
+      const discovered = await window.deskerAPI.mcp.discover();
+      set({ discovered });
+    } catch {
+      set({ discovered: [] });
+    }
+  },
+
+  importExisting: async (names) => {
+    try {
+      await window.deskerAPI.mcp.import(names);
+      set({ discovered: [] });
+      await get().loadConnections();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ error: `MCP 가져오기 실패: ${msg}` });
+    }
+  },
 }));
