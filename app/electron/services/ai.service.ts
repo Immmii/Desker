@@ -81,7 +81,7 @@ function ensureClaudeMd(cwd: string): void {
 export function spawnAiCli(
   sessionId: string,
   model: AiModel,
-  options?: { cols?: number; rows?: number }
+  options?: { cols?: number; rows?: number; systemPrompt?: string }
 ): pty.IPty {
   const binName = model === "claude" ? "claude" : "codex";
   const binPath = which(binName);
@@ -95,7 +95,13 @@ export function spawnAiCli(
     ensureClaudeMd(cwd);
   }
 
-  const aiProcess = pty.spawn(binPath, [], {
+  // Codex CLI: pass system prompt via --instructions flag
+  const args: string[] = [];
+  if (model === "chatgpt" && options?.systemPrompt) {
+    args.push("--instructions", options.systemPrompt);
+  }
+
+  const aiProcess = pty.spawn(binPath, args, {
     name: "xterm-256color",
     cols: options?.cols ?? 80,
     rows: options?.rows ?? 24,
