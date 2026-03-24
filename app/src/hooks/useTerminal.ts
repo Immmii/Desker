@@ -4,6 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { TerminalMode, AiModel, AgentRole } from "../viewmodels/session.vm";
 import { getAgentPreset } from "../viewmodels/session.vm";
+import { extractMath, type MathBlock } from "../views/widgets/terminal/MathOverlay";
 
 const TERMINAL_THEME_DARK = {
   background: "#0f0f13",
@@ -31,7 +32,7 @@ const TERMINAL_THEME_DARK = {
 
 const TERMINAL_THEME_LIGHT = {
   background: "#ffffff",
-  foreground: "#1d1d1f",
+  foreground: "#000000",
   cursor: "#6c5ce7",
   cursorAccent: "#ffffff",
   selectionBackground: "#6c5ce733",
@@ -94,9 +95,12 @@ export function useTerminal(
   readOnly = false,
   agentRole?: AgentRole,
   taskId?: string,
+  onMathDetected?: (blocks: MathBlock[]) => void,
 ) {
   const fitRef = useRef<FitAddon | null>(null);
   const spawnedRef = useRef(false);
+  const mathIdCounter = useRef(0);
+  const mathBufferRef = useRef("");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -175,34 +179,51 @@ export function useTerminal(
           }
         }
 
-      if (mode === "ai" && aiModel) {
-        // AI CLI mode
-        api.ai.spawn(sessionId, aiModel, { cols, rows }).then(async () => {
-          // Inject agent system prompt if selected
-          if (agentRole) {
-            const preset = getAgentPreset(agentRole);
-            if (preset) {
-              await new Promise((r) => setTimeout(r, 1500));
-              api.ai.writeHidden(sessionId, `/system ${preset.systemPrompt}`);
+      // Math detection helper
+      const detectMath = (data: string) => {
+        if (!onMathDetected) return;
+        mathBufferRef.current += data;
+        // Flush detection on newline or after accumulating enough data
+        if (mathBufferRef.current.includes("\n") || mathBufferRef.current.length > 500) {
+          const blocks = extractMath(mathBufferRef.current, mathIdCounter);
+          if (blocks.length > 0) {
+            onMathDetected(blocks);
+          }
+          mathBufferRef.current = "";
+        }
+      };
 
-              // Inject previous agent contexts for the same task
-              if (taskId) {
-                try {
-                  const contexts = await window.deskerAPI.db.getAgentContexts(taskId);
-                  if (contexts.length > 0) {
-                    const contextSummary = contexts
-                      .map((ctx) => `[${ctx.agent_role}]: ${ctx.content}`)
-                      .join("\n\n");
-                    await new Promise((r) => setTimeout(r, 500));
-                    api.ai.writeHidden(
-                      sessionId,
-                      `The following is context from previous agents working on the same task. Use this to inform your work:\n\n${contextSummary}`
-                    );
-                  }
-                } catch {
-                  // ignore context fetch errors
-                }
+      if (mode === "ai" && aiModel) {
+        // AI CLI mode — for Codex, pass system prompt at spawn time via --instructions
+        const agentPreset = agentRole ? getAgentPreset(agentRole) : null;
+        const spawnOpts: { cols: number; rows: number; systemPrompt?: string } = { cols, rows };
+        if (agentPreset && aiModel === "chatgpt") {
+          spawnOpts.systemPrompt = agentPreset.systemPrompt;
+        }
+
+        api.ai.spawn(sessionId, aiModel, spawnOpts).then(async () => {
+          // Inject agent system prompt (Claude only — Codex uses --instructions at spawn)
+          if (agentPreset && aiModel === "claude") {
+            await new Promise((r) => setTimeout(r, 1500));
+            api.ai.writeHidden(sessionId, `/system ${agentPreset.systemPrompt}`);
+          }
+
+          // Inject previous agent contexts for the same task (both Claude & Codex)
+          if (agentPreset && taskId) {
+            try {
+              const contexts = await window.deskerAPI.db.getAgentContexts(taskId);
+              if (contexts.length > 0) {
+                const contextSummary = contexts
+                  .map((ctx) => `[${ctx.agent_role}]: ${ctx.content}`)
+                  .join("\n\n");
+                await new Promise((r) => setTimeout(r, 500));
+                api.ai.writeHidden(
+                  sessionId,
+                  `The following is context from previous agents working on the same task. Use this to inform your work:\n\n${contextSummary}`
+                );
               }
+            } catch {
+              // ignore context fetch errors
             }
           }
         }).catch((err: Error) => {
@@ -212,7 +233,10 @@ export function useTerminal(
         });
 
         const unsubData = api.ai.onData((sid, data) => {
-          if (sid === sessionId) term!.write(data);
+          if (sid === sessionId) {
+            term!.write(data);
+            detectMath(data);
+          }
         });
 
         const unsubExit = api.ai.onExit((sid, code) => {
@@ -228,8 +252,9 @@ export function useTerminal(
             if (data === "\r") {
               const pending = consumePendingFiles(sessionId);
               if (pending) {
-                // Send file paths hidden (suppressed from terminal echo)
-                api.ai.writeHidden(sessionId, " " + pending);
+                // Send file paths + Enter together so one Enter submits
+                api.ai.writeHidden(sessionId, " " + pending + "\r");
+                return;
               }
             }
             api.ai.write(sessionId, data);
@@ -246,7 +271,10 @@ export function useTerminal(
         api.pty.create(sessionId, { cols, rows });
 
         const unsubData = api.pty.onData((sid, data) => {
-          if (sid === sessionId) term!.write(data);
+          if (sid === sessionId) {
+            term!.write(data);
+            detectMath(data);
+          }
         });
         const unsubExit = api.pty.onExit((sid, code) => {
           if (sid === sessionId) {

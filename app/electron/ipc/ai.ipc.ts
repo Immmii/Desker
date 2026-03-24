@@ -8,7 +8,7 @@ export function registerAiHandlers(
 ) {
   ipcMain.handle(
     "ai:spawn",
-    (_, sessionId: string, model: string, opts?: { cols?: number; rows?: number }) => {
+    (_, sessionId: string, model: string, opts?: { cols?: number; rows?: number; systemPrompt?: string }) => {
       const aiProcess = spawnAiCli(sessionId, model as AiModel, opts);
 
       aiProcess.onData((data) => {

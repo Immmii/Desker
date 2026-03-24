@@ -77,7 +77,7 @@ const api = {
 
   // ── AI CLI ──
   ai: {
-    spawn: (sessionId: string, model: string, opts?: { cols?: number; rows?: number }) =>
+    spawn: (sessionId: string, model: string, opts?: { cols?: number; rows?: number; systemPrompt?: string }) =>
       ipcRenderer.invoke("ai:spawn", sessionId, model, opts),
     write: (sessionId: string, data: string) =>
       ipcRenderer.invoke("ai:write", sessionId, data),
