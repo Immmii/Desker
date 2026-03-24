@@ -24,3 +24,7 @@ npm-debug.log*
 
 # OS
 Thumbs.db
+.omc/
+app/.omc/
+app/build/
+app/release/
