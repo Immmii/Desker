@@ -76,6 +76,27 @@ interface ShortcutRow {
   created_at: string;
 }
 
+interface AgentMessageRow {
+  id: string;
+  from_session_id: string;
+  to_session_id: string;
+  message_type: string;
+  content: string;
+  created_at: string;
+}
+
+interface WorkflowSessionRow {
+  id: string;
+  task_id: string | null;
+  parent_session_id: string;
+  agent_role: string;
+  agent_env: string;
+  status: string;
+  result_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface DotArtRow {
   id: string;
   name: string;
@@ -203,6 +224,24 @@ export interface DeskerAPI {
 
   system: {
     platform: "win32" | "darwin" | "linux";
+  };
+
+  orchestration: {
+    spawnChild(opts: {
+      parentSessionId: string;
+      role: string;
+      environment: string;
+      instructions: string;
+      taskId?: string;
+      aiModel?: string;
+    }): Promise<{ sessionId: string }>;
+    getStatus(sessionId: string): Promise<{ status: string; role?: string; result?: string } | null>;
+    getResult(sessionId: string): Promise<{ result: string | null; messages: AgentMessageRow[] } | null>;
+    sendToAgent(sessionId: string, message: string, fromId?: string): Promise<boolean>;
+    getChildren(parentSessionId: string): Promise<WorkflowSessionRow[]>;
+    getMessages(sessionId: string): Promise<AgentMessageRow[]>;
+    updateStatus(sessionId: string, status: string, result?: string): Promise<void>;
+    onStatusChanged(cb: (sessionId: string, status: string) => void): () => void;
   };
 
   window: {

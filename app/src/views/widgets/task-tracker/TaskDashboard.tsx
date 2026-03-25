@@ -6,6 +6,7 @@ import type { Task, TaskStatus, TaskPriority } from "../../../types/models";
 import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../../viewmodels/session.vm";
 import KanbanBoard from "./KanbanBoard";
 import CalendarView from "./CalendarView";
+import WorkflowEditor from "./WorkflowEditor";
 import StartSessionModal from "../../shared/StartSessionModal";
 import TaskDetailModal from "../../shared/TaskDetailModal";
 
@@ -314,12 +315,13 @@ function TaskEditForm({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
-type ViewMode = "list" | "kanban" | "calendar";
+type ViewMode = "list" | "kanban" | "calendar" | "workflow";
 
 const VIEW_OPTIONS: { mode: ViewMode; icon: string; label: string }[] = [
   { mode: "kanban", icon: "⊞", label: "상태별" },
   { mode: "list", icon: "☰", label: "리스트" },
   { mode: "calendar", icon: "📅", label: "캘린더" },
+  { mode: "workflow", icon: "⬡", label: "워크플로우" },
 ];
 
 function TaskRowMenu({ task }: { task: Task }) {
@@ -574,6 +576,7 @@ export default function TaskDashboard() {
       <div className="flex-1 min-h-0">
         {activeView === "kanban" && <KanbanBoard />}
         {activeView === "calendar" && <CalendarView />}
+        {activeView === "workflow" && <WorkflowEditor />}
         {activeView === "list" && (
           <div style={{ padding: "12px 24px" }} className="h-full overflow-y-auto">
             {filteredTasks.length === 0 ? (

@@ -9,6 +9,8 @@ import { registerDotArtHandlers } from "./ipc/dotart.ipc";
 import { registerMcpHandlers } from "./ipc/mcp.ipc";
 import { registerOAuthHandlers } from "./ipc/oauth.ipc";
 import { registerAiChatHandlers } from "./ipc/ai-chat.ipc";
+import { registerOrchestrationHandlers } from "./ipc/orchestration.ipc";
+import { startOrchestrationBridge, stopOrchestrationBridge } from "./services/orchestration-bridge.service";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -71,6 +73,7 @@ app.whenReady().then(() => {
   );
 
   initDatabase();
+  startOrchestrationBridge().catch((err) => console.error("[Orchestration Bridge] failed to start:", err));
 
   const getWindow = () => mainWindow;
   registerDbHandlers(ipcMain);
@@ -81,6 +84,7 @@ app.whenReady().then(() => {
   registerMcpHandlers(ipcMain);
   registerOAuthHandlers(ipcMain);
   registerAiChatHandlers(ipcMain, getWindow);
+  registerOrchestrationHandlers(getWindow);
 
   // Window control handlers
   ipcMain.handle("window:minimize", () => mainWindow?.minimize());
@@ -105,5 +109,6 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  stopOrchestrationBridge();
   app.quit();
 });

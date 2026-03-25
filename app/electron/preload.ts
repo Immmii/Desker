@@ -170,6 +170,25 @@ const api = {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
 
+  // ── Orchestration ──
+  orchestration: {
+    spawnChild: (opts: { parentSessionId: string; role: string; environment: string; instructions: string; taskId?: string; aiModel?: string }) =>
+      ipcRenderer.invoke("orchestration:spawnChild", opts),
+    getStatus: (sessionId: string) => ipcRenderer.invoke("orchestration:getStatus", sessionId),
+    getResult: (sessionId: string) => ipcRenderer.invoke("orchestration:getResult", sessionId),
+    sendToAgent: (sessionId: string, message: string, fromId?: string) =>
+      ipcRenderer.invoke("orchestration:sendToAgent", sessionId, message, fromId),
+    getChildren: (parentSessionId: string) => ipcRenderer.invoke("orchestration:getChildren", parentSessionId),
+    getMessages: (sessionId: string) => ipcRenderer.invoke("orchestration:getMessages", sessionId),
+    updateStatus: (sessionId: string, status: string, result?: string) =>
+      ipcRenderer.invoke("orchestration:updateStatus", sessionId, status, result),
+    onStatusChanged: (cb: (sessionId: string, status: string) => void) => {
+      const handler = (_: unknown, sid: string, status: string) => cb(sid, status);
+      ipcRenderer.on("orchestration:statusChanged", handler);
+      return () => { ipcRenderer.removeListener("orchestration:statusChanged", handler); };
+    },
+  },
+
   // ── System ──
   system: {
     platform: process.platform as "win32" | "darwin" | "linux",
