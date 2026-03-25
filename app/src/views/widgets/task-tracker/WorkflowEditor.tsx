@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -464,89 +463,90 @@ const PALETTE_ITEMS = [
   { type: "end", label: "완료", iconKey: "end", color: "#55efc4", desc: "파이프라인 끝" },
 ];
 
-function Sidebar() {
+function FloatingPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const onDragStart = (e: React.DragEvent, nodeType: string) => {
     e.dataTransfer.setData("application/reactflow", nodeType);
     e.dataTransfer.effectAllowed = "move";
   };
 
+  if (!open) return null;
+
   return (
     <div
       style={{
-        width: 200,
-        flexShrink: 0,
+        position: "absolute",
+        bottom: 16,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 20,
         background: "var(--color-bg-secondary)",
-        borderRight: "1px solid var(--color-border)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 14,
+        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
+        padding: "10px 12px",
         display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
+        gap: 6,
+        alignItems: "center",
       }}
     >
+      {PALETTE_ITEMS.map((item) => (
+        <div
+          key={item.type}
+          draggable
+          onDragStart={(e) => { onDragStart(e, item.type); onClose(); }}
+          title={`${item.label} — ${item.desc}`}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            background: item.color + "18",
+            border: "1px solid transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "grab",
+            transition: "all 0.15s",
+            flexDirection: "column",
+            gap: 2,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = item.color;
+            (e.currentTarget as HTMLDivElement).style.background = item.color + "30";
+            (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
+            (e.currentTarget as HTMLDivElement).style.background = item.color + "18";
+            (e.currentTarget as HTMLDivElement).style.transform = "none";
+          }}
+        >
+          {NODE_ICONS[item.iconKey]?.({ color: item.color, size: 18 })}
+          <span style={{ fontSize: 8, color: "var(--color-text-secondary)", fontWeight: 600, lineHeight: 1 }}>
+            {item.label.replace(" Agent", "")}
+          </span>
+        </div>
+      ))}
+      {/* Close button */}
       <div
+        onClick={onClose}
         style={{
-          padding: "12px 14px 8px",
-          fontSize: 11,
-          fontWeight: 700,
+          width: 32,
+          height: 32,
+          borderRadius: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          marginLeft: 4,
           color: "var(--color-text-secondary)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          borderBottom: "1px solid var(--color-border)",
+          transition: "all 0.15s",
         }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-hover)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
       >
-        노드 팔레트
-      </div>
-      <div style={{ overflowY: "auto", flex: 1, padding: "8px 8px" }}>
-        {PALETTE_ITEMS.map((item) => (
-          <div
-            key={item.type}
-            draggable
-            onDragStart={(e) => onDragStart(e, item.type)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "8px 10px",
-              borderRadius: 8,
-              marginBottom: 4,
-              cursor: "grab",
-              border: "1px solid transparent",
-              transition: "all 0.15s",
-              userSelect: "none",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "var(--color-bg-hover)";
-              (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-border)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "transparent";
-              (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
-            }}
-          >
-            <span
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 7,
-                background: item.color + "22",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                borderLeft: `3px solid ${item.color}`,
-              }}
-            >
-              {NODE_ICONS[item.iconKey]?.({ color: item.color, size: 14 })}
-            </span>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)" }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: 10, color: "var(--color-text-secondary)" }}>
-                {item.desc}
-              </div>
-            </div>
-          </div>
-        ))}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </div>
     </div>
   );
@@ -561,6 +561,7 @@ function WorkflowEditorInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
   const [workflowName, setWorkflowName] = useState("개발 파이프라인");
   const [isRunning, setIsRunning] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 
@@ -668,6 +669,28 @@ function WorkflowEditorInner() {
           노드 {nodes.length} · 연결 {edges.length}
         </span>
         <button
+          onClick={() => setShowPalette((v) => !v)}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 7,
+            border: showPalette ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+            background: showPalette ? "var(--color-accent)" : "transparent",
+            color: showPalette ? "#fff" : "var(--color-text-secondary)",
+            fontSize: 13,
+            cursor: "pointer",
+            fontFamily: "Pretendard, sans-serif",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            transition: "all 0.15s",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          노드
+        </button>
+        <button
           onClick={handleReset}
           style={{
             padding: "6px 14px",
@@ -722,62 +745,43 @@ function WorkflowEditorInner() {
         </button>
       </div>
 
-      {/* Body: sidebar + canvas */}
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <Sidebar />
-        <div ref={reactFlowWrapper} style={{ flex: 1, position: "relative" }}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            deleteKeyCode={["Backspace", "Delete"]}
-            fitView
-            fitViewOptions={{ padding: 0.3 }}
-            proOptions={{ hideAttribution: true }}
-            style={{ background: "var(--color-bg-primary)" }}
-            defaultEdgeOptions={{
-              animated: true,
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#6c5ce7" },
-              style: { stroke: "#6c5ce7", strokeWidth: 1.5 },
+      {/* Body: full canvas */}
+      <div ref={reactFlowWrapper} style={{ flex: 1, minHeight: 0, position: "relative" }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          nodeTypes={nodeTypes}
+          deleteKeyCode={["Backspace", "Delete"]}
+          fitView
+          fitViewOptions={{ padding: 0.3 }}
+          proOptions={{ hideAttribution: true }}
+          style={{ background: "var(--color-bg-primary)" }}
+          defaultEdgeOptions={{
+            animated: true,
+            markerEnd: { type: MarkerType.ArrowClosed, color: "#6c5ce7" },
+            style: { stroke: "#6c5ce7", strokeWidth: 1.5 },
+          }}
+        >
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={20}
+            size={1}
+            color="var(--color-border)"
+          />
+          <Controls
+            style={{
+              background: "var(--color-bg-secondary)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 8,
             }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              gap={20}
-              size={1}
-              color="var(--color-border)"
-            />
-            <Controls
-              style={{
-                background: "var(--color-bg-secondary)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 8,
-              }}
-            />
-            <MiniMap
-              style={{
-                background: "var(--color-bg-secondary)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 8,
-              }}
-              nodeColor={(node) => {
-                if (node.type === "agent") {
-                  const d = node.data as AgentNodeData;
-                  return AGENT_ROLES[d.role]?.color ?? "#6c5ce7";
-                }
-                if (node.type === "trigger") return "#6c5ce7";
-                if (node.type === "end") return "#55efc4";
-                return "#fdcb6e";
-              }}
-              maskColor="rgba(0,0,0,0.5)"
-            />
-          </ReactFlow>
-        </div>
+          />
+        </ReactFlow>
+        <FloatingPalette open={showPalette} onClose={() => setShowPalette(false)} />
       </div>
 
       <style>{`
