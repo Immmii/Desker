@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Desktop Apps
 
 on:
   push:
@@ -6,6 +6,47 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build
+        working-directory: app
+        run: npm run build
+
+      - name: Package macOS DMG
+        working-directory: app
+        run: npx electron-builder --mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Smoke test - DMG exists
+        working-directory: app
+        run: |
+          DMG=$(find release -name "*.dmg" | head -1)
+          if [ -z "$DMG" ]; then
+            echo "DMG not found in release/"
+            exit 1
+          fi
+          echo "Found: $DMG ($(du -h "$DMG" | cut -f1))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Desker-macOS
+          path: app/release/*.dmg
+
   build-win:
     runs-on: windows-latest
     steps:
