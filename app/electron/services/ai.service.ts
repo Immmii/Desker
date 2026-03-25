@@ -7,10 +7,16 @@ export type AiModel = "claude" | "chatgpt";
 
 const aiSessions = new Map<string, pty.IPty>();
 
+const isWin = process.platform === "win32";
+
 /** Cache the full login-shell PATH so we only resolve it once */
 let _cachedLoginEnv: Record<string, string> | null = null;
 function getLoginShellEnv(): Record<string, string> {
   if (_cachedLoginEnv) return _cachedLoginEnv;
+  if (isWin) {
+    _cachedLoginEnv = process.env as Record<string, string>;
+    return _cachedLoginEnv;
+  }
   const shell = process.env.SHELL || "/bin/zsh";
   try {
     const raw = execSync(`${shell} -l -c 'env'`, { encoding: "utf8" });
@@ -27,16 +33,31 @@ function getLoginShellEnv(): Record<string, string> {
 }
 
 function which(cmd: string): string | null {
-  // Packaged Electron apps don't inherit the user's shell PATH.
-  // Launch a login shell so .zshrc / .zprofile / .bash_profile are sourced.
+  if (isWin) {
+    try {
+      return execSync(`where ${cmd}`, { encoding: "utf8" }).trim().split("\n")[0];
+    } catch {
+      // Fallback: check common Windows install locations
+      const home = process.env.USERPROFILE || "";
+      const commonPaths = [
+        path.join(home, "AppData", "Local", "Programs", cmd, `${cmd}.exe`),
+        path.join(home, "AppData", "Roaming", "npm", `${cmd}.cmd`),
+        path.join(home, ".local", "bin", `${cmd}.exe`),
+      ];
+      for (const p of commonPaths) {
+        if (fs.existsSync(p)) return p;
+      }
+      return null;
+    }
+  }
+
+  // macOS/Linux: Launch a login shell so .zshrc / .zprofile / .bash_profile are sourced.
   const shell = process.env.SHELL || "/bin/zsh";
   try {
-    // Use login shell (-l) to source user profile and get full PATH
     return execSync(`${shell} -l -c 'which ${cmd}'`, {
       encoding: "utf8",
     }).trim();
   } catch {
-    // Fallback: check common install locations directly
     const commonPaths = [
       `/usr/local/bin/${cmd}`,
       `${process.env.HOME}/.local/bin/${cmd}`,
@@ -44,7 +65,6 @@ function which(cmd: string): string | null {
       `/opt/homebrew/bin/${cmd}`,
     ];
     for (const p of commonPaths) {
-      // Handle glob-like paths (nvm)
       try {
         const resolved = execSync(`ls ${p} 2>/dev/null`, { encoding: "utf8" }).trim().split("\n")[0];
         if (resolved && fs.existsSync(resolved)) return resolved;
@@ -89,19 +109,13 @@ export function spawnAiCli(
     throw new Error(`${binName} CLI not found. Install it first.`);
   }
 
-  const cwd = process.env.HOME || "/";
+  const cwd = process.env.HOME || process.env.USERPROFILE || "/";
 
   if (model === "claude") {
     ensureClaudeMd(cwd);
   }
 
-  // Codex CLI: pass system prompt via --instructions flag
-  const args: string[] = [];
-  if (model === "chatgpt" && options?.systemPrompt) {
-    args.push("--instructions", options.systemPrompt);
-  }
-
-  const aiProcess = pty.spawn(binPath, args, {
+  const aiProcess = pty.spawn(binPath, [], {
     name: "xterm-256color",
     cols: options?.cols ?? 80,
     rows: options?.rows ?? 24,

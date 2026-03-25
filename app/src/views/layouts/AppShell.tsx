@@ -503,8 +503,8 @@ function Titlebar({
           cursor: "default",
         }}
       >
-        {/* Fake traffic lights when window is blurred */}
-        {!focused && (
+        {/* Fake traffic lights when window is blurred (macOS only) */}
+        {!focused && navigator.platform.startsWith("Mac") && (
           <div style={{
             position: "fixed", left: 16, top: 15,
             display: "flex", gap: 8, zIndex: 201,
@@ -513,6 +513,36 @@ function Titlebar({
             <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--color-text-secondary)", opacity: 0.3 }} />
             <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--color-text-secondary)", opacity: 0.3 }} />
             <div style={{ width: 12, height: 12, borderRadius: "50%", background: "var(--color-text-secondary)", opacity: 0.3 }} />
+          </div>
+        )}
+        {/* Windows custom window controls */}
+        {navigator.platform.startsWith("Win") && (
+          <div style={{
+            position: "fixed", right: 0, top: 0, height: 38,
+            display: "flex", alignItems: "center", zIndex: 201,
+            WebkitAppRegion: "no-drag" as unknown as string,
+          } as React.CSSProperties}>
+            <button
+              onClick={() => window.deskerAPI.window.minimize()}
+              style={{ width: 46, height: 38, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent" }}
+              className="text-text-secondary hover:bg-bg-hover cursor-pointer"
+            >
+              <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+            </button>
+            <button
+              onClick={() => window.deskerAPI.window.maximize()}
+              style={{ width: 46, height: 38, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent" }}
+              className="text-text-secondary hover:bg-bg-hover cursor-pointer"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+            </button>
+            <button
+              onClick={() => window.deskerAPI.window.close()}
+              style={{ width: 46, height: 38, display: "flex", alignItems: "center", justifyContent: "center", border: "none", background: "transparent" }}
+              className="text-text-secondary hover:bg-[#e81123] hover:text-white cursor-pointer"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.2"><line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/></svg>
+            </button>
           </div>
         )}
         {/* Desker title — centered */}

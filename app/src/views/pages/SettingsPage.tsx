@@ -188,7 +188,7 @@ export default function SettingsPage() {
             >
               <div>
                 <p style={{ fontSize: 15 }} className="text-text-primary">시작 시 자동 실행</p>
-                <p style={{ fontSize: 13, marginTop: 2 }} className="text-text-secondary">macOS 로그인 시 자동 시작</p>
+                <p style={{ fontSize: 13, marginTop: 2 }} className="text-text-secondary">로그인 시 자동 시작</p>
               </div>
               <div
                 onClick={() => setAutoLaunch(!autoLaunch)}

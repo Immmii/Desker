@@ -6,12 +6,16 @@ export function createPty(
   sessionId: string,
   options?: { cols?: number; rows?: number }
 ): pty.IPty {
-  const shell = process.env.SHELL || "/bin/zsh";
-  const ptyProcess = pty.spawn(shell, ["-l"], {
+  const isWin = process.platform === "win32";
+  const shell = isWin
+    ? "powershell.exe"
+    : process.env.SHELL || "/bin/zsh";
+  const args = isWin ? [] : ["-l"];
+  const ptyProcess = pty.spawn(shell, args, {
     name: "xterm-256color",
     cols: options?.cols ?? 80,
     rows: options?.rows ?? 24,
-    cwd: process.env.HOME || "/",
+    cwd: process.env.HOME || process.env.USERPROFILE || "/",
     env: process.env as Record<string, string>,
   });
 

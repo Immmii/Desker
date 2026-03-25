@@ -13,13 +13,17 @@ import { registerAiChatHandlers } from "./ipc/ai-chat.ipc";
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
+  const isMac = process.platform === "darwin";
+  const isWin = process.platform === "win32";
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: "hidden",
-    trafficLightPosition: { x: 14, y: 13 },
+    titleBarStyle: isMac ? "hidden" : "default",
+    ...(isMac ? { trafficLightPosition: { x: 14, y: 13 } } : {}),
+    ...(isWin ? { frame: false } : {}),
     backgroundColor: "#0f0f13",
     webPreferences: {
       preload: path.join(__dirname, "../preload/preload.cjs"),
