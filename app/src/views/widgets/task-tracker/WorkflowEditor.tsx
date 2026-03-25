@@ -573,17 +573,19 @@ const BLANK_NODES: Node[] = [
 ];
 const BLANK_EDGES: Edge[] = [];
 
-const STORAGE_KEY = "desker:workflow-data";
+function storageKey(projectId?: string | null) {
+  return projectId ? `desker:workflow:${projectId}` : "desker:workflow:global";
+}
 
-function saveWorkflow(data: WorkflowData) {
+function saveWorkflow(data: WorkflowData, projectId?: string | null) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(storageKey(projectId), JSON.stringify(data));
   } catch {}
 }
 
-function loadWorkflow(): WorkflowData | null {
+function loadWorkflow(projectId?: string | null): WorkflowData | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(projectId));
     if (!raw) return null;
     return JSON.parse(raw) as WorkflowData;
   } catch {
@@ -1152,8 +1154,8 @@ function WorkflowCreationScreen({ onCreate }: { onCreate: (template: WorkflowTem
 
 let nodeIdCounter = 100;
 
-function WorkflowEditorInner() {
-  const saved = loadWorkflow();
+function WorkflowEditorInner({ projectId }: { projectId?: string | null }) {
+  const saved = loadWorkflow(projectId);
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowTemplate | null>(saved ? "general" : null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(saved?.nodes ?? []);
@@ -1175,7 +1177,7 @@ function WorkflowEditorInner() {
   // Persist on change
   useEffect(() => {
     if (activeWorkflow !== null) {
-      saveWorkflow({ name: workflowName, nodes, edges });
+      saveWorkflow({ name: workflowName, nodes, edges }, projectId);
     }
   }, [nodes, edges, workflowName, activeWorkflow]);
 
@@ -1202,7 +1204,7 @@ function WorkflowEditorInner() {
     setEdges(initEdges);
     setWorkflowName(name);
     setActiveWorkflow(template);
-    saveWorkflow({ name, nodes: initNodes, edges: initEdges });
+    saveWorkflow({ name, nodes: initNodes, edges: initEdges }, projectId);
     // Fit view after nodes render
     setTimeout(() => fitView({ padding: 0.3 }), 100);
   };
@@ -1274,7 +1276,7 @@ function WorkflowEditorInner() {
     setActiveWorkflow(null);
     setNodes([]);
     setEdges([]);
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(projectId));
   };
 
   const handleRun = () => {
@@ -1497,10 +1499,10 @@ function WorkflowEditorInner() {
   );
 }
 
-export default function WorkflowEditor() {
+export default function WorkflowEditor({ projectId }: { projectId?: string | null }) {
   return (
-    <ReactFlowProvider>
-      <WorkflowEditorInner />
+    <ReactFlowProvider key={projectId ?? "global"}>
+      <WorkflowEditorInner projectId={projectId} />
     </ReactFlowProvider>
   );
 }

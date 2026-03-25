@@ -115,7 +115,7 @@ export default function TaskDashboard() {
       <div className="flex-1 min-h-0">
         {activeView === "kanban" && <KanbanBoard />}
         {activeView === "calendar" && <CalendarView />}
-        {activeView === "workflow" && <WorkflowEditor />}
+        {activeView === "workflow" && <WorkflowEditor projectId={selectedProjectId} />}
       </div>
 
       {detailTaskId && (
