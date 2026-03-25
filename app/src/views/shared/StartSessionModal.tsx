@@ -42,10 +42,12 @@ interface StartSessionModalProps {
 export default function StartSessionModal({ taskTitle, onStart, onClose }: StartSessionModalProps) {
   const { claudeAvailable, chatgptAvailable, checkAvailability } = useAiVM();
   const [checking, setChecking] = useState(true);
-  const [step, setStep] = useState<"mode" | "agent">("mode");
+  const [step, setStep] = useState<"mode" | "agent" | "install-guide">("mode");
   const [selectedMode, setSelectedMode] = useState<TerminalMode>("ai");
   const [selectedAiModel, setSelectedAiModel] = useState<AiModel>("claude");
   const [selectedEnv, setSelectedEnv] = useState<AgentEnvironment>("general");
+  const [guideModel, setGuideModel] = useState<AiModel>("claude");
+  const isWin = window.deskerAPI.system.platform === "win32";
 
   useEffect(() => {
     checkAvailability().finally(() => setChecking(false));
@@ -78,7 +80,7 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: "relative", width: step === "agent" ? 480 : 360, padding: 24, borderRadius: 16,
+          position: "relative", width: step === "agent" ? 480 : step === "install-guide" ? 400 : 360, padding: 24, borderRadius: 16,
           background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
           transition: "width 0.2s",
@@ -111,59 +113,71 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
                   </svg>
                   <div>
                     <span style={{ fontSize: 15, fontWeight: 600 }} className="text-text-primary group-hover:text-accent transition-colors">Shell</span>
-                    <p style={{ fontSize: 12, marginTop: 2 }} className="text-text-secondary">zsh 터미널 세션</p>
+                    <p style={{ fontSize: 12, marginTop: 2 }} className="text-text-secondary">{isWin ? "PowerShell 터미널 세션" : "zsh 터미널 세션"}</p>
                   </div>
                 </div>
               </button>
 
               {/* Claude */}
               <button
-                onClick={() => { if (claudeAvailable) handleModeSelect("ai", "claude"); }}
-                disabled={!claudeAvailable && !checking}
+                onClick={() => {
+                  if (claudeAvailable) handleModeSelect("ai", "claude");
+                  else if (!checking) { setGuideModel("claude"); setStep("install-guide"); }
+                }}
                 style={{
                   padding: "14px 16px", borderRadius: 12, textAlign: "left",
                   border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
-                  opacity: (!claudeAvailable && !checking) ? 0.4 : 1,
-                  cursor: (!claudeAvailable && !checking) ? "not-allowed" : "pointer",
+                  cursor: checking ? "default" : "pointer",
                 }}
                 className="hover:border-accent/50 transition-colors group"
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M10 2L12 7.5L18 10L12 12.5L10 18L8 12.5L2 10L8 7.5L10 2Z" fill="var(--color-accent)" />
+                    <path d="M10 2L12 7.5L18 10L12 12.5L10 18L8 12.5L2 10L8 7.5L10 2Z" fill={claudeAvailable || checking ? "var(--color-accent)" : "var(--color-text-secondary)"} opacity={claudeAvailable || checking ? 1 : 0.4} />
                   </svg>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <span style={{ fontSize: 15, fontWeight: 600 }} className="text-text-primary group-hover:text-accent transition-colors">Claude</span>
                     <p style={{ fontSize: 12, marginTop: 2 }} className="text-text-secondary">
-                      {checking ? "확인 중..." : claudeAvailable ? "Claude CLI 연결됨 → 에이전트 선택" : "claude CLI 미설치"}
+                      {checking ? "확인 중..." : claudeAvailable ? "Claude CLI 연결됨 → 에이전트 선택" : "미설치 — 클릭하여 설치 가이드 보기"}
                     </p>
                   </div>
+                  {!checking && !claudeAvailable && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, flexShrink: 0 }}>
+                      <polyline points="9,6 15,12 9,18" />
+                    </svg>
+                  )}
                 </div>
               </button>
 
               {/* ChatGPT */}
               <button
-                onClick={() => { if (chatgptAvailable) handleModeSelect("ai", "chatgpt"); }}
-                disabled={!chatgptAvailable && !checking}
+                onClick={() => {
+                  if (chatgptAvailable) handleModeSelect("ai", "chatgpt");
+                  else if (!checking) { setGuideModel("chatgpt"); setStep("install-guide"); }
+                }}
                 style={{
                   padding: "14px 16px", borderRadius: 12, textAlign: "left",
                   border: "1px solid var(--color-border)", background: "var(--color-bg-primary)",
-                  opacity: (!chatgptAvailable && !checking) ? 0.4 : 1,
-                  cursor: (!chatgptAvailable && !checking) ? "not-allowed" : "pointer",
+                  cursor: checking ? "default" : "pointer",
                 }}
                 className="hover:border-accent/50 transition-colors group"
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <circle cx="10" cy="10" r="7" stroke="#10a37f" strokeWidth="1.5" />
-                    <path d="M7 10.5L9 12.5L13.5 7.5" stroke="#10a37f" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="10" cy="10" r="7" stroke={chatgptAvailable || checking ? "#10a37f" : "var(--color-text-secondary)"} strokeWidth="1.5" opacity={chatgptAvailable || checking ? 1 : 0.4} />
+                    <path d="M7 10.5L9 12.5L13.5 7.5" stroke={chatgptAvailable || checking ? "#10a37f" : "var(--color-text-secondary)"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity={chatgptAvailable || checking ? 1 : 0.4} />
                   </svg>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <span style={{ fontSize: 15, fontWeight: 600 }} className="text-text-primary group-hover:text-accent transition-colors">ChatGPT</span>
                     <p style={{ fontSize: 12, marginTop: 2 }} className="text-text-secondary">
-                      {checking ? "확인 중..." : chatgptAvailable ? "ChatGPT CLI 연결됨 → 에이전트 선택" : "chatgpt CLI 미설치"}
+                      {checking ? "확인 중..." : chatgptAvailable ? "ChatGPT CLI 연결됨 → 에이전트 선택" : "미설치 — 클릭하여 설치 가이드 보기"}
                     </p>
                   </div>
+                  {!checking && !chatgptAvailable && (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, flexShrink: 0 }}>
+                      <polyline points="9,6 15,12 9,18" />
+                    </svg>
+                  )}
                 </div>
               </button>
             </div>
@@ -179,7 +193,7 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
               취소
             </button>
           </>
-        ) : (
+        ) : step === "agent" ? (
           <>
             {/* Step 2: Agent role selection */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -305,7 +319,165 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
               </button>
             </div>
           </>
-        )}
+        ) : step === "install-guide" ? (
+
+          <>
+            {/* Step: Install Guide */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <button
+                onClick={() => setStep("mode")}
+                style={{
+                  width: 28, height: 28, borderRadius: 6, border: "none",
+                  background: "transparent", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                className="text-text-secondary hover:bg-bg-hover"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="10,3 5,8 10,13" />
+                </svg>
+              </button>
+              <h3 style={{ fontSize: 16, fontWeight: 700 }} className="text-text-primary">
+                {guideModel === "claude" ? "Claude Code" : "Codex CLI"} 설치 가이드
+              </h3>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+              {guideModel === "claude" ? (
+                <>
+                  <p style={{ fontSize: 13, lineHeight: 1.6 }} className="text-text-secondary">
+                    Claude Code CLI를 설치하면 AI 에이전트 기능을 사용할 수 있습니다.
+                  </p>
+
+                  {/* Step 1 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "var(--color-accent)" }}>1. npm으로 설치</div>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      npm install -g @anthropic-ai/claude-code
+                    </code>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "var(--color-accent)" }}>2. 설치 확인</div>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      claude --version
+                    </code>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "var(--color-accent)" }}>3. 인증</div>
+                    <p style={{ fontSize: 12, lineHeight: 1.5 }} className="text-text-secondary">
+                      처음 실행 시 Anthropic 계정 로그인이 필요합니다.
+                    </p>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12, marginTop: 6,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      claude
+                    </code>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, lineHeight: 1.6 }} className="text-text-secondary">
+                    Codex CLI를 설치하면 ChatGPT AI 에이전트 기능을 사용할 수 있습니다.
+                  </p>
+
+                  {/* Step 1 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "#10a37f" }}>1. npm으로 설치</div>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      npm install -g @openai/codex
+                    </code>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "#10a37f" }}>2. 설치 확인</div>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      codex --version
+                    </code>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div style={{ padding: "12px 14px", borderRadius: 10, background: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: "#10a37f" }}>3. 인증</div>
+                    <p style={{ fontSize: 12, lineHeight: 1.5 }} className="text-text-secondary">
+                      OpenAI API 키가 필요합니다. 환경 변수를 설정하세요.
+                    </p>
+                    <code style={{
+                      display: "block", padding: "8px 12px", borderRadius: 6, fontSize: 12, marginTop: 6,
+                      background: "var(--color-bg-secondary)", color: "var(--color-text-primary)",
+                      fontFamily: "'SF Mono', 'Fira Code', monospace",
+                    }}>
+                      {isWin ? "$env:OPENAI_API_KEY=\"sk-...\"" : "export OPENAI_API_KEY=\"sk-...\""}
+                    </code>
+                  </div>
+                </>
+              )}
+
+              {/* Tip */}
+              <div style={{
+                padding: "10px 14px", borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+                background: "var(--color-accent-alpha, rgba(108,92,231,0.08))",
+                border: "1px solid var(--color-accent)",
+                borderColor: guideModel === "claude" ? "var(--color-accent)" : "#10a37f",
+                color: "var(--color-text-secondary)",
+              }}>
+                설치 후 Desker를 재시작하면 자동으로 감지됩니다.
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button
+                onClick={() => {
+                  const url = guideModel === "claude"
+                    ? "https://docs.anthropic.com/en/docs/claude-code/overview"
+                    : "https://github.com/openai/codex";
+                  window.deskerAPI.window.openExternal(url);
+                }}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  border: "none",
+                  background: guideModel === "claude" ? "var(--color-accent)" : "#10a37f",
+                  color: "#fff", cursor: "pointer",
+                }}
+              >
+                공식 문서 열기
+              </button>
+              <button
+                onClick={() => setStep("mode")}
+                style={{
+                  flex: 1, padding: "8px 0", borderRadius: 10, fontSize: 13,
+                  border: "1px solid var(--color-border)", background: "transparent",
+                  color: "var(--color-text-secondary)", cursor: "pointer",
+                }}
+              >
+                돌아가기
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

@@ -170,6 +170,11 @@ const api = {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
 
+  // ── System ──
+  system: {
+    platform: process.platform as "win32" | "darwin" | "linux",
+  },
+
   // ── Window Controls ──
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize"),

@@ -201,6 +201,10 @@ export interface DeskerAPI {
     getPathForFile(file: File): string;
   };
 
+  system: {
+    platform: "win32" | "darwin" | "linux";
+  };
+
   window: {
     minimize(): Promise<void>;
     maximize(): Promise<void>;
