@@ -5,51 +5,86 @@ import { useSessionVM } from "../../../viewmodels/session.vm";
 import { getAgentPreset } from "../../../viewmodels/session.vm";
 import { useDotArtVM } from "../../../viewmodels/dotart.vm";
 
-// ── Endesga 32 inspired warm cozy palette ──
+// ── Enhanced Warm Cozy Palette (OpenClaw-inspired) ──
 const C = {
   // Walls & structure
-  wallDark: "#733e39",
-  wallMid: "#b86f50",
-  wallLight: "#e4a672",
+  wallDark: "#6b3a35",
+  wallMid: "#a86b52",
+  wallLight: "#dea070",
   wallTrim: "#3e2731",
-  // Floor
-  floorA: "#ead4aa",
-  floorB: "#e4a672",
-  floorLine: "#c28569",
+  wallPaper: "#c48b68",
+  wallPattern: "#b87e5c",
+  molding: "#d4a87c",
+  moldingDark: "#8b5e3c",
+  baseboard: "#5a3c2e",
+  // Floor (warm wood)
+  floorA: "#c49a6c",
+  floorB: "#b8905f",
+  floorC: "#d4a878",
+  floorLine: "#9a7650",
+  floorHighlight: "#debb8e",
+  floorKnot: "#8a6840",
   // Furniture wood
-  woodDark: "#733e39",
-  woodMid: "#b86f50",
-  woodLight: "#d77643",
-  woodHighlight: "#e4a672",
+  woodDark: "#6b3a2a",
+  woodMid: "#a86848",
+  woodLight: "#c87e50",
+  woodHighlight: "#dea070",
+  woodGrain: "#955a3a",
   // Desk / tech
   deskTop: "#5a6988",
   deskBody: "#3a4466",
+  deskEdge: "#2e3550",
   screenGlow: "#2ce8f5",
   screenDark: "#124e89",
-  screenBg: "#193c3e",
+  screenBg: "#0f2e3a",
+  screenLine: "#1a5c4a",
+  keyboard: "#4a5570",
+  keyboardKey: "#5a6588",
   // Accent
   accent: "#0099db",
   accentLight: "#2ce8f5",
   green: "#63c74d",
   greenDark: "#3e8948",
+  greenLight: "#a8e06c",
   red: "#e43b44",
+  redDark: "#b82e3a",
   yellow: "#fee761",
+  yellowWarm: "#f5d442",
   orange: "#f77622",
+  orangeLight: "#feae34",
   pink: "#f6757a",
+  pinkSoft: "#f4a0a8",
+  purple: "#8b6db8",
   // Neutrals
   white: "#ffffff",
+  offWhite: "#f0e8dc",
+  cream: "#ede0cc",
   light: "#c0cbdc",
   mid: "#8b9bb4",
   dark: "#262b44",
+  darker: "#1a1e32",
   black: "#181425",
-  skin: "#e8b796",
-  skinShadow: "#c28569",
+  // Character
+  skin: "#f0c8a0",
+  skinShadow: "#d4a478",
+  skinHighlight: "#f8dcc0",
   hair: "#3e2731",
+  hairLight: "#5c3a42",
   shirt: "#0099db",
   shirtShadow: "#124e89",
+  pants: "#3a4466",
   // Window
-  skyLight: "#73eff7",
-  skyMid: "#41a6f6",
+  skyTop: "#3a8ad4",
+  skyMid: "#5cb8f0",
+  skyLight: "#8cd8ff",
+  skyBottom: "#b0e8ff",
+  cloud: "#e8f4ff",
+  cloudShadow: "#c8dce8",
+  sunbeam: "rgba(255, 240, 180, 0.06)",
+  // Ambient
+  dustColor: "rgba(255, 235, 200, 0.4)",
+  shadowColor: "rgba(30, 20, 15, 0.12)",
+  warmGlow: "rgba(255, 220, 160, 0.08)",
 };
 
 interface RoomObj {
@@ -66,110 +101,211 @@ function pxRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, 
   ctx.fillRect(Math.round(x), Math.round(y), w, h);
 }
 
+// ── Shadow helper for furniture depth ──
+function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = "#000";
+  // Elliptical shadow beneath object
+  for (let i = 0; i < 3; i++) {
+    pxRect(ctx, x + i, y + h - 1 + i, w - i * 2, 2, "#000");
+  }
+  ctx.restore();
+}
+
 // ── Draw functions for each object ──
 
 function drawBookshelf(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  drawShadow(ctx, x + 2, y, 24, 38);
   // Frame
   pxRect(ctx, x, y, 28, 36, C.woodDark);
   pxRect(ctx, x + 1, y + 1, 26, 34, C.woodMid);
-  // Shelves
-  pxRect(ctx, x + 1, y + 12, 26, 2, C.woodDark);
-  pxRect(ctx, x + 1, y + 24, 26, 2, C.woodDark);
-  // Books row 1
+  // Back panel
+  pxRect(ctx, x + 2, y + 2, 24, 32, C.woodLight);
+  // Top molding
+  pxRect(ctx, x - 1, y - 1, 30, 2, C.woodDark);
+  pxRect(ctx, x, y, 28, 1, C.woodHighlight);
+  // Shelves with depth
+  for (const sy of [12, 24]) {
+    pxRect(ctx, x + 1, y + sy, 26, 2, C.woodDark);
+    pxRect(ctx, x + 1, y + sy, 26, 1, C.woodMid);
+  }
+  // Books row 1 (varied heights, some tilted)
   pxRect(ctx, x + 3, y + 3, 3, 8, C.red);
+  pxRect(ctx, x + 3, y + 3, 3, 1, C.redDark);
   pxRect(ctx, x + 7, y + 4, 3, 7, C.accent);
+  pxRect(ctx, x + 7, y + 4, 3, 1, C.screenDark);
   pxRect(ctx, x + 11, y + 2, 4, 9, C.green);
+  pxRect(ctx, x + 11, y + 2, 4, 1, C.greenDark);
   pxRect(ctx, x + 16, y + 3, 3, 8, C.yellow);
+  pxRect(ctx, x + 16, y + 3, 3, 1, C.yellowWarm);
   pxRect(ctx, x + 20, y + 5, 4, 6, C.orange);
+  pxRect(ctx, x + 20, y + 5, 4, 1, C.orangeLight);
   // Books row 2
   pxRect(ctx, x + 3, y + 15, 4, 8, C.pink);
-  pxRect(ctx, x + 8, y + 14, 3, 9, C.screenDark);
-  pxRect(ctx, x + 12, y + 16, 4, 7, C.wallMid);
+  pxRect(ctx, x + 8, y + 14, 3, 9, C.purple);
+  pxRect(ctx, x + 12, y + 16, 5, 7, C.wallMid);
   pxRect(ctx, x + 18, y + 15, 3, 8, C.accentLight);
+  pxRect(ctx, x + 22, y + 16, 3, 7, C.pinkSoft);
   // Items row 3
-  pxRect(ctx, x + 4, y + 27, 5, 6, C.woodLight); // small box
-  pxRect(ctx, x + 14, y + 28, 6, 5, C.greenDark); // plant pot
-  pxRect(ctx, x + 16, y + 25, 2, 3, C.green); // leaf
+  pxRect(ctx, x + 4, y + 27, 5, 6, C.woodLight); // box
+  pxRect(ctx, x + 4, y + 27, 5, 1, C.woodHighlight);
+  // Tiny cactus
+  pxRect(ctx, x + 15, y + 29, 4, 4, C.orange); // pot
+  pxRect(ctx, x + 16, y + 27, 2, 3, C.green);
+  pxRect(ctx, x + 15, y + 26, 1, 2, C.greenDark);
+  pxRect(ctx, x + 18, y + 27, 1, 1, C.greenDark);
+  // Globe
+  pxRect(ctx, x + 21, y + 28, 4, 4, C.skyMid);
+  pxRect(ctx, x + 22, y + 29, 2, 2, C.greenDark);
+  pxRect(ctx, x + 22, y + 32, 2, 1, C.woodDark);
 }
 
 function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Desk surface
+  drawShadow(ctx, x + 2, y, 52, 34);
+  // Desk surface with edge highlight
   pxRect(ctx, x, y, 56, 4, C.woodLight);
-  pxRect(ctx, x, y + 1, 56, 2, C.woodHighlight);
-  // Front panel
+  pxRect(ctx, x, y, 56, 1, C.woodHighlight);
+  pxRect(ctx, x, y + 3, 56, 1, C.woodGrain);
+  // Front panel with wood grain
   pxRect(ctx, x + 2, y + 4, 52, 20, C.woodMid);
   pxRect(ctx, x + 2, y + 4, 52, 1, C.woodDark);
-  // Drawer
-  pxRect(ctx, x + 6, y + 8, 18, 12, C.woodDark);
-  pxRect(ctx, x + 7, y + 9, 16, 10, C.woodMid);
+  // Subtle grain lines
+  for (let gx = x + 6; gx < x + 50; gx += 7) {
+    pxRect(ctx, gx, y + 6, 1, 16, C.woodGrain + "30");
+  }
+  // Left drawer
+  pxRect(ctx, x + 5, y + 7, 20, 14, C.woodDark);
+  pxRect(ctx, x + 6, y + 8, 18, 12, C.woodMid);
+  pxRect(ctx, x + 6, y + 8, 18, 1, C.woodHighlight + "60");
   pxRect(ctx, x + 13, y + 13, 4, 2, C.woodHighlight); // handle
+  pxRect(ctx, x + 13, y + 13, 4, 1, C.woodLight);
+  // Right open section
+  pxRect(ctx, x + 30, y + 7, 20, 14, C.woodDark + "40");
   // Legs
   pxRect(ctx, x + 4, y + 24, 3, 8, C.woodDark);
+  pxRect(ctx, x + 4, y + 24, 1, 8, C.woodMid);
   pxRect(ctx, x + 49, y + 24, 3, 8, C.woodDark);
+  pxRect(ctx, x + 49, y + 24, 1, 8, C.woodMid);
 }
 
 function drawMonitor(ctx: CanvasRenderingContext2D, x: number, y: number) {
   // Stand
-  pxRect(ctx, x + 10, y + 20, 6, 3, C.deskBody);
-  pxRect(ctx, x + 8, y + 22, 10, 2, C.deskBody);
-  // Screen frame
-  pxRect(ctx, x, y, 26, 20, C.deskBody);
-  pxRect(ctx, x + 1, y + 1, 24, 17, C.screenBg);
-  // Screen content (code lines)
-  pxRect(ctx, x + 3, y + 3, 10, 1, C.green);
-  pxRect(ctx, x + 3, y + 5, 14, 1, C.accentLight);
-  pxRect(ctx, x + 3, y + 7, 8, 1, C.yellow);
-  pxRect(ctx, x + 3, y + 9, 12, 1, C.light);
-  pxRect(ctx, x + 3, y + 11, 6, 1, C.green);
-  pxRect(ctx, x + 3, y + 13, 16, 1, C.accentLight);
-  pxRect(ctx, x + 3, y + 15, 9, 1, C.pink);
+  pxRect(ctx, x + 10, y + 19, 6, 4, C.deskBody);
+  pxRect(ctx, x + 10, y + 19, 6, 1, C.deskTop);
+  pxRect(ctx, x + 7, y + 22, 12, 2, C.deskBody);
+  pxRect(ctx, x + 7, y + 22, 12, 1, C.deskTop);
+  // Screen frame (slightly rounded look)
+  pxRect(ctx, x, y, 26, 19, C.deskEdge);
+  pxRect(ctx, x + 1, y, 24, 19, C.deskBody);
+  // Screen with gradient feel
+  pxRect(ctx, x + 2, y + 1, 22, 16, C.screenBg);
+  // Screen content (code lines with better colors)
+  pxRect(ctx, x + 4, y + 3, 8, 1, C.green);
+  pxRect(ctx, x + 13, y + 3, 4, 1, C.mid);
+  pxRect(ctx, x + 4, y + 5, 14, 1, C.accentLight);
+  pxRect(ctx, x + 4, y + 7, 6, 1, C.yellow);
+  pxRect(ctx, x + 11, y + 7, 8, 1, C.light);
+  pxRect(ctx, x + 4, y + 9, 12, 1, C.pinkSoft);
+  pxRect(ctx, x + 4, y + 11, 5, 1, C.green);
+  pxRect(ctx, x + 10, y + 11, 10, 1, C.mid);
+  pxRect(ctx, x + 4, y + 13, 16, 1, C.accentLight);
+  pxRect(ctx, x + 4, y + 15, 9, 1, C.orange);
+  // Screen glow reflection
+  ctx.save();
+  ctx.globalAlpha = 0.03;
+  pxRect(ctx, x + 2, y + 1, 22, 8, C.white);
+  ctx.restore();
   // Power LED
-  pxRect(ctx, x + 12, y + 18, 2, 1, C.green);
+  pxRect(ctx, x + 12, y + 17, 2, 1, C.green);
+  // Keyboard
+  pxRect(ctx, x + 3, y + 24, 20, 3, C.keyboard);
+  pxRect(ctx, x + 3, y + 24, 20, 1, C.keyboardKey);
+  // Key rows
+  for (let kx = 0; kx < 8; kx++) {
+    pxRect(ctx, x + 4 + kx * 2 + (kx > 3 ? 1 : 0), y + 25, 1, 1, C.keyboardKey);
+  }
 }
 
 function drawPlant(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Pot
+  drawShadow(ctx, x + 1, y, 12, 19);
+  // Pot with slight gradient
+  pxRect(ctx, x + 1, y + 9, 12, 2, C.orange);
   pxRect(ctx, x + 2, y + 10, 10, 8, C.orange);
   pxRect(ctx, x + 3, y + 11, 8, 6, C.woodLight);
-  pxRect(ctx, x + 1, y + 9, 12, 2, C.orange);
+  pxRect(ctx, x + 3, y + 11, 8, 1, C.woodHighlight);
   // Soil
   pxRect(ctx, x + 3, y + 11, 8, 2, C.woodDark);
-  // Leaves
-  pxRect(ctx, x + 5, y + 5, 4, 5, C.green);
-  pxRect(ctx, x + 3, y + 3, 3, 4, C.greenDark);
-  pxRect(ctx, x + 8, y + 2, 3, 5, C.green);
-  pxRect(ctx, x + 6, y + 1, 2, 3, C.greenDark);
-  pxRect(ctx, x + 1, y + 6, 2, 3, C.green);
-  pxRect(ctx, x + 10, y + 4, 2, 3, C.greenDark);
+  pxRect(ctx, x + 4, y + 11, 2, 1, C.woodMid);
+  // Stem
+  pxRect(ctx, x + 6, y + 6, 2, 6, C.greenDark);
+  // Leaves (lush, varied)
+  pxRect(ctx, x + 4, y + 4, 6, 4, C.green);
+  pxRect(ctx, x + 3, y + 3, 4, 3, C.greenDark);
+  pxRect(ctx, x + 8, y + 2, 3, 4, C.green);
+  pxRect(ctx, x + 5, y + 1, 3, 2, C.greenLight);
+  pxRect(ctx, x + 1, y + 5, 3, 3, C.green);
+  pxRect(ctx, x + 10, y + 4, 3, 3, C.greenDark);
+  // Leaf highlights
+  pxRect(ctx, x + 5, y + 2, 1, 1, C.greenLight);
+  pxRect(ctx, x + 9, y + 3, 1, 1, C.greenLight);
+  // Tiny flower
+  pxRect(ctx, x + 3, y + 2, 1, 1, C.pinkSoft);
+  pxRect(ctx, x + 10, y + 2, 1, 1, C.yellow);
 }
 
 function drawLamp(ctx: CanvasRenderingContext2D, x: number, y: number, isOn = true) {
-  // Base
-  pxRect(ctx, x + 2, y + 20, 8, 2, C.deskBody);
+  drawShadow(ctx, x + 1, y, 10, 23);
+  // Base (rounded)
+  pxRect(ctx, x + 2, y + 19, 8, 3, C.deskBody);
+  pxRect(ctx, x + 3, y + 19, 6, 1, C.deskTop);
   // Pole
   pxRect(ctx, x + 5, y + 6, 2, 14, C.deskBody);
-  // Shade
-  pxRect(ctx, x, y, 12, 7, isOn ? C.yellow : C.mid);
-  pxRect(ctx, x + 1, y + 1, 10, 5, isOn ? C.orange : C.deskBody);
-  // Glow
-  pxRect(ctx, x + 2, y + 2, 8, 3, isOn ? C.yellow : C.mid);
+  pxRect(ctx, x + 5, y + 6, 1, 14, C.deskTop);
+  // Shade (wider, more detailed)
+  pxRect(ctx, x - 1, y, 14, 7, isOn ? C.yellow : C.mid);
+  pxRect(ctx, x, y + 1, 12, 5, isOn ? C.orange : C.deskBody);
+  pxRect(ctx, x + 1, y + 2, 10, 3, isOn ? C.yellow : C.mid);
+  // Shade rim
+  pxRect(ctx, x - 1, y + 6, 14, 1, isOn ? C.orangeLight : C.deskBody);
+  // Inner glow when on
+  if (isOn) {
+    pxRect(ctx, x + 3, y + 3, 6, 1, C.white);
+    // Light cone below shade
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    for (let ly = 1; ly <= 6; ly++) {
+      pxRect(ctx, x + 2 - ly, y + 7 + ly * 2, 8 + ly * 2, 2, C.yellow);
+    }
+    ctx.restore();
+  }
 }
 
 function drawCabinet(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Body
+  drawShadow(ctx, x + 1, y, 18, 36);
+  // Body with side shadow
   pxRect(ctx, x, y, 20, 34, C.woodMid);
   pxRect(ctx, x + 1, y + 1, 18, 32, C.woodLight);
-  // Drawers
+  pxRect(ctx, x + 18, y + 1, 1, 32, C.woodMid); // right edge shadow
+  // Top
+  pxRect(ctx, x - 1, y - 1, 22, 2, C.woodDark);
+  pxRect(ctx, x, y, 20, 1, C.woodHighlight);
+  // Drawers with better detail
   for (let i = 0; i < 3; i++) {
     const dy = y + 2 + i * 10;
     pxRect(ctx, x + 2, dy, 16, 9, C.woodMid);
     pxRect(ctx, x + 3, dy + 1, 14, 7, C.woodHighlight);
+    pxRect(ctx, x + 3, dy + 1, 14, 1, C.offWhite + "40"); // top edge highlight
     pxRect(ctx, x + 8, dy + 3, 4, 2, C.woodDark); // handle
+    pxRect(ctx, x + 8, dy + 3, 4, 1, C.woodMid);
   }
-  // Label tags
-  pxRect(ctx, x + 13, dy3Offset(y, 0), 3, 4, C.accent);
-  pxRect(ctx, x + 13, dy3Offset(y, 1), 3, 4, C.green);
-  pxRect(ctx, x + 13, dy3Offset(y, 2), 3, 4, C.yellow);
+  // Label tags (colored tabs)
+  pxRect(ctx, x + 14, dy3Offset(y, 0), 3, 4, C.accent);
+  pxRect(ctx, x + 14, dy3Offset(y, 0), 3, 1, C.accentLight);
+  pxRect(ctx, x + 14, dy3Offset(y, 1), 3, 4, C.green);
+  pxRect(ctx, x + 14, dy3Offset(y, 1), 3, 1, C.greenLight);
+  pxRect(ctx, x + 14, dy3Offset(y, 2), 3, 4, C.yellow);
+  pxRect(ctx, x + 14, dy3Offset(y, 2), 3, 1, C.offWhite);
 }
 
 function dy3Offset(y: number, i: number) {
@@ -177,56 +313,99 @@ function dy3Offset(y: number, i: number) {
 }
 
 function drawFrame(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Frame border
+  // Shadow on wall
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  pxRect(ctx, x + 2, y + 2, 18, 14, "#000");
+  ctx.restore();
+  // Frame border (ornate)
   pxRect(ctx, x, y, 18, 14, C.woodDark);
   pxRect(ctx, x + 1, y + 1, 16, 12, C.woodMid);
-  // Picture content (sunset)
+  pxRect(ctx, x + 1, y + 1, 16, 1, C.woodHighlight);
+  // Picture content (sunset scene)
   pxRect(ctx, x + 2, y + 2, 14, 10, C.skyMid);
-  pxRect(ctx, x + 2, y + 7, 14, 5, C.greenDark);
-  pxRect(ctx, x + 2, y + 6, 14, 2, C.green);
-  // Sun
-  pxRect(ctx, x + 11, y + 3, 3, 3, C.yellow);
+  pxRect(ctx, x + 2, y + 2, 14, 3, C.skyTop);
+  pxRect(ctx, x + 2, y + 8, 14, 4, C.greenDark);
+  pxRect(ctx, x + 2, y + 7, 14, 2, C.green);
+  // Mountains
+  pxRect(ctx, x + 4, y + 5, 3, 3, C.greenDark);
+  pxRect(ctx, x + 5, y + 4, 1, 1, C.greenDark);
+  pxRect(ctx, x + 10, y + 6, 4, 2, C.greenDark);
+  pxRect(ctx, x + 11, y + 5, 2, 1, C.greenDark);
+  // Sun with glow
+  pxRect(ctx, x + 13, y + 3, 2, 2, C.yellow);
+  pxRect(ctx, x + 12, y + 3, 1, 1, C.orangeLight);
+  pxRect(ctx, x + 14, y + 4, 1, 1, C.orangeLight);
 }
 
 function drawCoffee(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Mug body
-  pxRect(ctx, x + 1, y + 3, 8, 8, C.white);
-  pxRect(ctx, x + 2, y + 4, 6, 6, C.light);
+  // Mug body (ceramic feel)
+  pxRect(ctx, x + 1, y + 3, 8, 8, C.offWhite);
+  pxRect(ctx, x + 2, y + 4, 6, 6, C.cream);
   // Handle
-  pxRect(ctx, x + 9, y + 5, 3, 4, C.white);
-  pxRect(ctx, x + 10, y + 6, 1, 2, C.deskBody);
-  // Coffee
+  pxRect(ctx, x + 9, y + 5, 3, 5, C.offWhite);
+  pxRect(ctx, x + 10, y + 6, 2, 3, C.cream);
+  pxRect(ctx, x + 11, y + 7, 1, 1, C.offWhite);
+  // Coffee liquid
   pxRect(ctx, x + 2, y + 5, 6, 4, C.woodDark);
   pxRect(ctx, x + 3, y + 5, 4, 1, C.woodMid);
-  // Steam
+  // Mug highlight
+  pxRect(ctx, x + 1, y + 3, 1, 3, C.white);
+  // Steam (2 wisps)
+  ctx.save();
+  ctx.globalAlpha = 0.5;
   pxRect(ctx, x + 3, y + 1, 1, 2, C.light);
+  pxRect(ctx, x + 4, y, 1, 1, C.light);
   pxRect(ctx, x + 6, y, 1, 2, C.light);
+  pxRect(ctx, x + 7, y + 1, 1, 1, C.light);
+  ctx.restore();
 }
 
 function drawChair(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Back
+  drawShadow(ctx, x + 3, y, 12, 23);
+  // Back (ergonomic shape)
   pxRect(ctx, x + 2, y, 14, 3, C.deskBody);
   pxRect(ctx, x + 3, y + 3, 12, 8, C.deskBody);
   pxRect(ctx, x + 4, y + 4, 10, 6, C.deskTop);
+  // Back highlight
+  pxRect(ctx, x + 4, y + 4, 10, 1, C.mid);
   // Seat
   pxRect(ctx, x, y + 11, 18, 4, C.deskBody);
   pxRect(ctx, x + 1, y + 12, 16, 2, C.deskTop);
-  // Legs/wheels
-  pxRect(ctx, x + 7, y + 15, 4, 6, C.dark);
+  pxRect(ctx, x + 1, y + 11, 16, 1, C.mid); // seat edge highlight
+  // Cylinder
+  pxRect(ctx, x + 7, y + 15, 4, 4, C.dark);
+  pxRect(ctx, x + 7, y + 15, 2, 4, C.deskBody);
+  // Star base & wheels
+  pxRect(ctx, x + 4, y + 19, 10, 1, C.dark);
   pxRect(ctx, x + 3, y + 20, 3, 2, C.dark);
+  pxRect(ctx, x + 3, y + 21, 1, 1, C.deskBody);
   pxRect(ctx, x + 12, y + 20, 3, 2, C.dark);
+  pxRect(ctx, x + 14, y + 21, 1, 1, C.deskBody);
 }
 
 function drawJournal(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Cover
+  drawShadow(ctx, x + 1, y, 12, 20);
+  // Cover (leather-like)
   pxRect(ctx, x, y, 14, 18, C.woodDark);
   pxRect(ctx, x + 1, y + 1, 12, 16, C.accent);
   pxRect(ctx, x + 2, y + 2, 10, 14, C.screenDark);
-  // Spine
+  // Leather texture
+  pxRect(ctx, x + 1, y + 1, 12, 1, C.accentLight + "40");
+  // Spine (stitched)
   pxRect(ctx, x, y, 2, 18, C.woodDark);
+  pxRect(ctx, x, y + 2, 1, 1, C.woodMid);
+  pxRect(ctx, x, y + 5, 1, 1, C.woodMid);
+  pxRect(ctx, x, y + 8, 1, 1, C.woodMid);
+  pxRect(ctx, x, y + 11, 1, 1, C.woodMid);
+  pxRect(ctx, x, y + 14, 1, 1, C.woodMid);
   // Title lines
   pxRect(ctx, x + 4, y + 4, 6, 1, C.light);
   pxRect(ctx, x + 4, y + 6, 4, 1, C.light);
+  // Small star decoration
+  pxRect(ctx, x + 6, y + 10, 2, 2, C.yellow);
+  pxRect(ctx, x + 5, y + 11, 1, 1, C.yellow);
+  pxRect(ctx, x + 8, y + 11, 1, 1, C.yellow);
   // Bookmark ribbon
   pxRect(ctx, x + 9, y + 16, 2, 3, C.red);
   pxRect(ctx, x + 8, y + 18, 1, 1, C.red);
@@ -235,58 +414,127 @@ function drawJournal(ctx: CanvasRenderingContext2D, x: number, y: number) {
 
 function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: string, animFrame: number, shirtColor?: string, label?: string) {
   const s = 2;
-  // Hair
+
+  // Tiny shadow below character
+  ctx.save();
+  ctx.globalAlpha = 0.08;
+  pxRect(ctx, x + s, y + 7 * s + 2, 4 * s, s, "#000");
+  ctx.restore();
+
+  // Hair (more styled - spiky top)
   ctx.fillStyle = C.hair;
   for (const [px, py] of [[1,0],[2,0],[3,0],[4,0],[0,1],[1,1],[2,1],[3,1],[4,1],[5,1]]) {
     ctx.fillRect(x + px * s, y + py * s, s, s);
   }
+  // Hair highlights
+  ctx.fillStyle = C.hairLight;
+  ctx.fillRect(x + 2 * s, y, s, s);
+  ctx.fillRect(x + 4 * s, y, s, s);
+
   // Face
   ctx.fillStyle = C.skin;
   for (const [px, py] of [[1,2],[2,2],[3,2],[4,2],[1,3],[2,3],[3,3],[4,3]]) {
     ctx.fillRect(x + px * s, y + py * s, s, s);
   }
-  // Eyes
+  // Face highlight (left cheek)
+  ctx.fillStyle = C.skinHighlight;
+  ctx.fillRect(x + 1 * s, y + 2 * s, s, s);
+
+  // Eyes (with blink on some frames when idle)
+  const blink = state === "idle" && animFrame === 1;
   ctx.fillStyle = C.black;
-  ctx.fillRect(x + 2 * s, y + 2 * s, s, s);
-  ctx.fillRect(x + 4 * s, y + 2 * s, s, s);
-  // Smile
+  if (!blink) {
+    ctx.fillRect(x + 2 * s, y + 2 * s, s, s);
+    ctx.fillRect(x + 4 * s, y + 2 * s, s, s);
+    // Eye shine
+    ctx.fillStyle = C.white;
+    ctx.fillRect(x + 2 * s, y + 2 * s, 1, 1);
+    ctx.fillRect(x + 4 * s, y + 2 * s, 1, 1);
+  } else {
+    // Closed eyes (line)
+    ctx.fillRect(x + 2 * s, y + 2 * s + 1, s, 1);
+    ctx.fillRect(x + 4 * s, y + 2 * s + 1, s, 1);
+  }
+
+  // Blush cheeks
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = C.pinkSoft;
+  ctx.fillRect(x + 1 * s, y + 3 * s, s, s);
+  ctx.fillRect(x + 4 * s, y + 3 * s, s, s);
+  ctx.restore();
+
+  // Mouth
   ctx.fillStyle = C.skinShadow;
-  ctx.fillRect(x + 3 * s, y + 3 * s, s, s);
-  // Shirt
-  ctx.fillStyle = shirtColor ?? C.shirt;
+  if (state === "working") {
+    // Open mouth (happy working)
+    ctx.fillRect(x + 3 * s, y + 3 * s, s, s);
+  } else if (state === "error") {
+    // Frown
+    pxRect(ctx, x + 2 * s + 1, y + 3 * s + 1, s + 1, 1, C.skinShadow);
+  } else {
+    // Gentle smile
+    ctx.fillRect(x + 3 * s, y + 3 * s, s, 1);
+  }
+
+  // Shirt (with collar detail)
+  const sc = shirtColor ?? C.shirt;
+  ctx.fillStyle = sc;
   for (const [px, py] of [[0,4],[1,4],[2,4],[3,4],[4,4],[5,4],[1,5],[2,5],[3,5],[4,5]]) {
     ctx.fillRect(x + px * s, y + py * s, s, s);
   }
+  // Collar
+  ctx.fillStyle = C.white;
+  ctx.fillRect(x + 2 * s + 1, y + 4 * s, 2, s);
+
   // Arms - shift down by 1px when working on alternate frames (typing)
   const armShift = state === "working" && animFrame === 1 ? 1 : 0;
   ctx.fillStyle = shirtColor ? `${shirtColor}cc` : C.shirtShadow;
   for (const [px, py] of [[1,6],[2,6],[3,6],[4,6]]) {
     ctx.fillRect(x + px * s, y + py * s + armShift, s, s);
   }
+  // Hands (skin colored)
+  ctx.fillStyle = C.skin;
+  ctx.fillRect(x + 1 * s, y + 6 * s + armShift + s - 1, s, 1);
+  ctx.fillRect(x + 4 * s, y + 6 * s + armShift + s - 1, s, 1);
 
-  // Status bubble
+  // Status bubble (rounded with shadow)
   const bx = x + 7 * s;
-  const by = y - 2;
-  pxRect(ctx, bx, by, 12, 8, C.white);
-  pxRect(ctx, bx + 1, by + 1, 10, 6, C.white);
+  const by = y - 4;
+  // Bubble shadow
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  pxRect(ctx, bx + 1, by + 1, 14, 10, "#000");
+  ctx.restore();
+  // Bubble body
+  pxRect(ctx, bx + 1, by, 12, 9, C.white);
+  pxRect(ctx, bx, by + 1, 14, 7, C.white);
   // Bubble tail
-  pxRect(ctx, bx, by + 7, 2, 2, C.white);
+  pxRect(ctx, bx, by + 8, 3, 2, C.white);
+  pxRect(ctx, bx, by + 10, 1, 1, C.white);
 
   if (state === "working") {
-    // Typing dots - animate by shifting which dots are visible
-    pxRect(ctx, bx + 2, by + 3, 2, 2, C.green);
-    pxRect(ctx, bx + 5, by + 3, 2, 2, animFrame === 0 ? C.green : C.greenDark);
-    pxRect(ctx, bx + 8, by + 3, 2, 2, animFrame === 0 ? C.greenDark : C.green);
+    // Typing dots with bounce effect
+    const bounce0 = animFrame === 0 ? -1 : 0;
+    const bounce1 = animFrame === 0 ? 0 : -1;
+    pxRect(ctx, bx + 3, by + 3 + bounce0, 2, 2, C.green);
+    pxRect(ctx, bx + 6, by + 3 + bounce1, 2, 2, C.green);
+    pxRect(ctx, bx + 9, by + 3 + bounce0, 2, 2, C.greenDark);
   } else if (state === "error") {
-    // Blink the error dot
+    // Error icon
     if (animFrame === 0) {
-      pxRect(ctx, bx + 4, by + 2, 4, 4, C.red);
+      pxRect(ctx, bx + 5, by + 2, 4, 5, C.red);
+      pxRect(ctx, bx + 6, by + 3, 2, 2, C.white);
     }
   } else {
-    // Idle - alternate between zzz and empty
+    // Idle - zzz with float
     if (animFrame === 0) {
-      pxRect(ctx, bx + 3, by + 2, 6, 1, C.mid);
-      pxRect(ctx, bx + 5, by + 4, 4, 1, C.mid);
+      ctx.fillStyle = C.mid;
+      ctx.font = "bold 5px monospace";
+      ctx.fillText("z", bx + 4, by + 5);
+      ctx.fillText("z", bx + 7, by + 4);
+      ctx.font = "bold 4px monospace";
+      ctx.fillText("z", bx + 9, by + 3);
     }
   }
 
@@ -300,41 +548,109 @@ function drawAgent(ctx: CanvasRenderingContext2D, x: number, y: number, state: s
 }
 
 function drawWindow(ctx: CanvasRenderingContext2D, x: number, y: number) {
-  // Frame
-  pxRect(ctx, x, y, 36, 28, C.woodDark);
-  pxRect(ctx, x + 1, y + 1, 34, 26, C.woodMid);
-  // Glass panes
-  pxRect(ctx, x + 2, y + 2, 15, 24, C.skyLight);
-  pxRect(ctx, x + 19, y + 2, 15, 24, C.skyLight);
-  // Sky gradient
-  pxRect(ctx, x + 2, y + 2, 15, 8, C.skyMid);
-  pxRect(ctx, x + 19, y + 2, 15, 8, C.skyMid);
-  // Clouds
-  pxRect(ctx, x + 5, y + 5, 6, 2, C.white);
-  pxRect(ctx, x + 23, y + 7, 5, 2, C.white);
-  // Cross bar
+  // Shadow on wall
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  pxRect(ctx, x + 2, y + 2, 38, 30, "#000");
+  ctx.restore();
+
+  // Outer frame (thick, ornate)
+  pxRect(ctx, x - 1, y - 1, 38, 30, C.woodDark);
+  pxRect(ctx, x, y, 36, 28, C.woodMid);
+  // Inner frame
+  pxRect(ctx, x + 1, y + 1, 34, 26, C.woodDark);
+
+  // Glass panes with sky gradient
+  // Left pane
+  pxRect(ctx, x + 2, y + 2, 15, 24, C.skyBottom);
+  pxRect(ctx, x + 2, y + 2, 15, 12, C.skyLight);
+  pxRect(ctx, x + 2, y + 2, 15, 6, C.skyMid);
+  pxRect(ctx, x + 2, y + 2, 15, 2, C.skyTop);
+  // Right pane
+  pxRect(ctx, x + 19, y + 2, 15, 24, C.skyBottom);
+  pxRect(ctx, x + 19, y + 2, 15, 12, C.skyLight);
+  pxRect(ctx, x + 19, y + 2, 15, 6, C.skyMid);
+  pxRect(ctx, x + 19, y + 2, 15, 2, C.skyTop);
+
+  // Clouds (fluffy, multi-layered)
+  pxRect(ctx, x + 4, y + 5, 8, 2, C.cloud);
+  pxRect(ctx, x + 5, y + 4, 5, 1, C.cloud);
+  pxRect(ctx, x + 3, y + 6, 2, 1, C.cloudShadow);
+  pxRect(ctx, x + 22, y + 7, 6, 2, C.cloud);
+  pxRect(ctx, x + 23, y + 6, 4, 1, C.cloud);
+  pxRect(ctx, x + 21, y + 8, 2, 1, C.cloudShadow);
+
+  // Distant trees/hills at bottom of window
+  pxRect(ctx, x + 2, y + 20, 15, 6, C.greenDark);
+  pxRect(ctx, x + 19, y + 20, 15, 6, C.greenDark);
+  pxRect(ctx, x + 4, y + 18, 4, 3, C.green);
+  pxRect(ctx, x + 10, y + 19, 3, 2, C.green);
+  pxRect(ctx, x + 22, y + 18, 5, 3, C.green);
+  pxRect(ctx, x + 29, y + 19, 3, 2, C.green);
+
+  // Cross bar (window divider)
   pxRect(ctx, x + 17, y + 2, 2, 24, C.woodMid);
+  pxRect(ctx, x + 17, y + 2, 1, 24, C.woodHighlight);
   pxRect(ctx, x + 2, y + 13, 32, 2, C.woodMid);
-  // Curtain hints
-  pxRect(ctx, x - 2, y, 3, 28, C.pink);
-  pxRect(ctx, x - 2, y, 2, 28, C.wallLight);
-  pxRect(ctx, x + 35, y, 3, 28, C.pink);
-  pxRect(ctx, x + 36, y, 2, 28, C.wallLight);
+  pxRect(ctx, x + 2, y + 13, 32, 1, C.woodHighlight);
+
+  // Curtains (soft drape)
+  // Left curtain
+  pxRect(ctx, x - 4, y - 2, 5, 32, C.pinkSoft);
+  pxRect(ctx, x - 3, y - 2, 3, 32, C.pink);
+  pxRect(ctx, x - 4, y - 2, 1, 32, C.pinkSoft + "80");
+  // Curtain folds
+  pxRect(ctx, x - 2, y + 4, 1, 24, C.pinkSoft + "60");
+  pxRect(ctx, x - 3, y + 8, 1, 18, C.pink + "80");
+  // Right curtain
+  pxRect(ctx, x + 35, y - 2, 5, 32, C.pinkSoft);
+  pxRect(ctx, x + 36, y - 2, 3, 32, C.pink);
+  pxRect(ctx, x + 39, y - 2, 1, 32, C.pinkSoft + "80");
+  pxRect(ctx, x + 37, y + 4, 1, 24, C.pinkSoft + "60");
+  // Curtain rod
+  pxRect(ctx, x - 6, y - 3, 48, 2, C.woodDark);
+  pxRect(ctx, x - 6, y - 3, 48, 1, C.woodMid);
+  // Rod finials
+  pxRect(ctx, x - 7, y - 4, 2, 4, C.woodDark);
+  pxRect(ctx, x + 41, y - 4, 2, 4, C.woodDark);
+
+  // Windowsill
+  pxRect(ctx, x - 2, y + 27, 40, 3, C.woodMid);
+  pxRect(ctx, x - 2, y + 27, 40, 1, C.woodHighlight);
 }
 
 function drawRug(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  // Rug shadow
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  pxRect(ctx, x + 1, y + 1, 50, 24, "#000");
+  ctx.restore();
+
+  // Rug layers
   pxRect(ctx, x, y, 50, 24, C.deskTop);
   pxRect(ctx, x + 1, y + 1, 48, 22, C.accent);
   pxRect(ctx, x + 2, y + 2, 46, 20, C.deskTop);
-  // Pattern
-  pxRect(ctx, x + 4, y + 4, 42, 1, C.accentLight);
-  pxRect(ctx, x + 4, y + 19, 42, 1, C.accentLight);
-  pxRect(ctx, x + 4, y + 4, 1, 16, C.accentLight);
-  pxRect(ctx, x + 45, y + 4, 1, 16, C.accentLight);
-  // Diamond center
+  // Border pattern (double line)
+  pxRect(ctx, x + 3, y + 3, 44, 1, C.accentLight);
+  pxRect(ctx, x + 3, y + 20, 44, 1, C.accentLight);
+  pxRect(ctx, x + 3, y + 3, 1, 18, C.accentLight);
+  pxRect(ctx, x + 46, y + 3, 1, 18, C.accentLight);
+  // Inner border
+  pxRect(ctx, x + 5, y + 5, 40, 1, C.accent + "60");
+  pxRect(ctx, x + 5, y + 18, 40, 1, C.accent + "60");
+  // Diamond center pattern
   for (let i = 0; i < 5; i++) {
     pxRect(ctx, x + 21 + i, y + 11 - i, 1, 1 + i * 2, C.accent);
     pxRect(ctx, x + 29 - i, y + 11 - i, 1, 1 + i * 2, C.accent);
+  }
+  // Corner motifs
+  pxRect(ctx, x + 7, y + 7, 3, 3, C.accent + "80");
+  pxRect(ctx, x + 40, y + 7, 3, 3, C.accent + "80");
+  pxRect(ctx, x + 7, y + 14, 3, 3, C.accent + "80");
+  pxRect(ctx, x + 40, y + 14, 3, 3, C.accent + "80");
+  // Fringe
+  for (let fx = 0; fx < 12; fx++) {
+    pxRect(ctx, x + 2 + fx * 4, y + 23, 1, 2, C.deskTop);
   }
 }
 
@@ -373,15 +689,15 @@ const DRAW_MAP: Record<string, (ctx: CanvasRenderingContext2D, x: number, y: num
 const OBJ_SIZES: Record<string, [number, number]> = {
   bookshelf: [28, 36],
   frame: [18, 14],
-  window: [40, 28],
+  window: [44, 32],
   plant: [14, 18],
-  lamp: [12, 22],
+  lamp: [14, 22],
   desk: [56, 32],
-  monitor: [26, 24],
+  monitor: [26, 28],
   coffee: [12, 11],
   chair: [18, 22],
   cabinet: [20, 34],
-  rug: [50, 24],
+  rug: [50, 26],
   journal: [14, 19],
 };
 
@@ -647,6 +963,31 @@ function CatalogPreview({ id }: { id: string }) {
   );
 }
 
+// ── Dust particle system ──
+interface DustMote {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  alpha: number;
+}
+
+function createDustMotes(count: number): DustMote[] {
+  const motes: DustMote[] = [];
+  for (let i = 0; i < count; i++) {
+    motes.push({
+      x: Math.random() * 250,
+      y: Math.random() * 140,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: Math.random() * 0.1 + 0.02,
+      size: Math.random() * 1.2 + 0.4,
+      alpha: Math.random() * 0.3 + 0.1,
+    });
+  }
+  return motes;
+}
+
 export default function HomeOfficeCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -681,6 +1022,10 @@ export default function HomeOfficeCanvas() {
     const timer = setInterval(() => setAnimFrame((f) => (f === 0 ? 1 : 0)), 500);
     return () => clearInterval(timer);
   }, []);
+
+  // Dust particle system
+  const dustRef = useRef<DustMote[]>(createDustMotes(18));
+  const dustTickRef = useRef(0);
 
   // Sessions for multi-agent rendering
   const sessions = useSessionVM((s) => s.sessions);
@@ -742,7 +1087,6 @@ export default function HomeOfficeCanvas() {
         case "coffee":
           showToast("커피 한 잔 ☕");
           break;
-        // desk, bookshelf, plant, frame, rug, chair, window → no action
         default:
           break;
       }
@@ -769,30 +1113,115 @@ export default function HomeOfficeCanvas() {
       ctx.translate(ox, oy);
       ctx.scale(scale, scale);
 
-      // ── Wall ──
+      // ── Wall with wallpaper pattern ──
       const wallH = 48;
+      // Base wall color
       pxRect(ctx, 0, 0, roomW, wallH, C.wallMid);
-      pxRect(ctx, 0, 0, roomW, 3, C.wallLight);
-      pxRect(ctx, 0, wallH - 2, roomW, 2, C.wallDark);
-      // Wall texture (subtle horizontal lines)
-      for (let wy = 6; wy < wallH - 4; wy += 8) {
-        pxRect(ctx, 0, wy, roomW, 1, C.wallLight + "18");
-      }
 
-      // ── Floor ──
-      for (let fy = 0; fy < roomH - wallH; fy += 8) {
-        for (let fx = 0; fx < roomW; fx += 8) {
-          const isA = ((fx / 8 + fy / 8) % 2) === 0;
-          pxRect(ctx, fx, wallH + fy, 8, 8, isA ? C.floorA : C.floorB);
+      // Wallpaper subtle stripe pattern
+      for (let wx = 0; wx < roomW; wx += 6) {
+        pxRect(ctx, wx, 0, 2, wallH, C.wallPaper + "18");
+      }
+      // Wallpaper diamond pattern
+      for (let wy = 6; wy < wallH - 8; wy += 12) {
+        for (let wx = 4; wx < roomW - 4; wx += 12) {
+          const offset = ((wy / 12) % 2) * 6;
+          ctx.save();
+          ctx.globalAlpha = 0.04;
+          pxRect(ctx, wx + offset, wy, 2, 2, C.wallLight);
+          pxRect(ctx, wx + offset + 1, wy - 1, 1, 1, C.wallLight);
+          pxRect(ctx, wx + offset + 1, wy + 2, 1, 1, C.wallLight);
+          ctx.restore();
         }
       }
-      // Floor edge shadow
-      pxRect(ctx, 0, wallH, roomW, 2, C.floorLine);
+
+      // Crown molding (top)
+      pxRect(ctx, 0, 0, roomW, 1, C.molding);
+      pxRect(ctx, 0, 1, roomW, 1, C.moldingDark);
+      pxRect(ctx, 0, 2, roomW, 1, C.molding);
+      // Molding shadow
+      pxRect(ctx, 0, 3, roomW, 1, C.wallMid + "80");
+
+      // Wainscoting (lower wall panel)
+      const wainscotTop = wallH - 14;
+      pxRect(ctx, 0, wainscotTop, roomW, 14, C.wallDark);
+      pxRect(ctx, 0, wainscotTop, roomW, 1, C.moldingDark);
+      pxRect(ctx, 0, wainscotTop + 1, roomW, 1, C.molding + "60");
+      // Wainscot panels
+      for (let wx = 4; wx < roomW - 4; wx += 20) {
+        pxRect(ctx, wx, wainscotTop + 3, 16, 9, C.wallMid + "40");
+        pxRect(ctx, wx, wainscotTop + 3, 16, 1, C.molding + "30");
+        pxRect(ctx, wx, wainscotTop + 11, 16, 1, C.wallTrim + "20");
+      }
+
+      // Baseboard
+      pxRect(ctx, 0, wallH - 2, roomW, 2, C.baseboard);
+      pxRect(ctx, 0, wallH - 2, roomW, 1, C.moldingDark);
+
+      // ── Floor (wood planks) ──
+      const floorColors = [C.floorA, C.floorB, C.floorC, C.floorB, C.floorA];
+      for (let fy = 0; fy < roomH - wallH; fy += 6) {
+        const colorIdx = (fy / 6) % floorColors.length;
+        const plankColor = floorColors[colorIdx];
+        const offset = ((fy / 6) % 2) * 30; // Stagger planks
+
+        for (let fx = -30 + offset; fx < roomW + 30; fx += 50) {
+          pxRect(ctx, Math.max(0, fx), wallH + fy, Math.min(50, roomW - Math.max(0, fx)), 6, plankColor);
+          // Plank gap (darker line)
+          pxRect(ctx, Math.max(0, fx), wallH + fy + 5, Math.min(50, roomW - Math.max(0, fx)), 1, C.floorLine + "60");
+          // Vertical plank seam
+          if (fx > 0 && fx < roomW) {
+            pxRect(ctx, fx, wallH + fy, 1, 6, C.floorLine + "40");
+          }
+        }
+        // Subtle wood grain
+        if (fy % 12 === 0) {
+          for (let gx = 10 + (fy % 24); gx < roomW; gx += 35) {
+            ctx.save();
+            ctx.globalAlpha = 0.04;
+            pxRect(ctx, gx, wallH + fy + 1, 8, 1, C.floorKnot);
+            pxRect(ctx, gx + 2, wallH + fy + 2, 4, 1, C.floorKnot);
+            ctx.restore();
+          }
+        }
+      }
+
+      // Floor edge highlight (where wall meets floor)
+      pxRect(ctx, 0, wallH, roomW, 1, C.floorHighlight + "40");
 
       // ── Room border ──
       ctx.strokeStyle = C.wallTrim;
       ctx.lineWidth = 1;
       ctx.strokeRect(0.5, 0.5, roomW - 1, roomH - 1);
+
+      // ── Sunbeam from window ──
+      const winObj = objects.find((o) => o.id === "window");
+      if (winObj) {
+        ctx.save();
+        // Diagonal light beam from window
+        const wx = winObj.x + 18;
+        const wy = winObj.y + 28;
+        ctx.globalAlpha = 1;
+        // Light trapezoid on floor
+        ctx.fillStyle = C.sunbeam;
+        ctx.beginPath();
+        ctx.moveTo(wx - 10, wy);
+        ctx.lineTo(wx + 46, wy);
+        ctx.lineTo(wx + 70, roomH);
+        ctx.lineTo(wx - 30, roomH);
+        ctx.closePath();
+        ctx.fill();
+        // Second layer for intensity
+        ctx.fillStyle = C.warmGlow;
+        ctx.beginPath();
+        ctx.moveTo(wx - 5, wy);
+        ctx.lineTo(wx + 40, wy);
+        ctx.lineTo(wx + 56, roomH);
+        ctx.lineTo(wx - 18, roomH);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
 
       // ── Lamp glow effect when on ──
       if (lampOn) {
@@ -801,11 +1230,13 @@ export default function HomeOfficeCanvas() {
           ctx.save();
           const gx = lampObj.x + 6;
           const gy = lampObj.y + 4;
-          const grad = ctx.createRadialGradient(gx, gy, 2, gx, gy, 30);
-          grad.addColorStop(0, "rgba(254, 231, 97, 0.15)");
+          // Larger, warmer glow
+          const grad = ctx.createRadialGradient(gx, gy, 2, gx, gy, 35);
+          grad.addColorStop(0, "rgba(254, 231, 97, 0.18)");
+          grad.addColorStop(0.4, "rgba(254, 200, 80, 0.08)");
           grad.addColorStop(1, "rgba(254, 231, 97, 0)");
           ctx.fillStyle = grad;
-          ctx.fillRect(gx - 30, gy - 10, 60, 40);
+          ctx.fillRect(gx - 35, gy - 12, 70, 50);
           ctx.restore();
         }
       }
@@ -842,9 +1273,9 @@ export default function HomeOfficeCanvas() {
           const [w, h] = OBJ_SIZES[obj.id] || [20, 20];
           ctx.save();
           ctx.shadowColor = C.accentLight;
-          ctx.shadowBlur = 4;
-          ctx.fillStyle = isDrag ? "rgba(0,153,219,0.15)" : "rgba(0,153,219,0.08)";
-          ctx.fillRect(obj.x - 1, obj.y - 1, w + 2, h + 2);
+          ctx.shadowBlur = 6;
+          ctx.fillStyle = isDrag ? "rgba(0,153,219,0.18)" : "rgba(0,153,219,0.08)";
+          ctx.fillRect(obj.x - 2, obj.y - 2, w + 4, h + 4);
           ctx.restore();
         }
 
@@ -857,10 +1288,14 @@ export default function HomeOfficeCanvas() {
 
         if (isHover) {
           const [w] = OBJ_SIZES[obj.id] || [20, 20];
+          // Label background
+          const labelText = obj.label;
           ctx.font = "bold 7px monospace";
+          const tw = ctx.measureText(labelText).width;
+          pxRect(ctx, obj.x + w / 2 - tw / 2 - 2, obj.y - 10, tw + 4, 8, C.dark + "cc");
           ctx.fillStyle = C.white;
           ctx.textAlign = "center";
-          ctx.fillText(obj.label, obj.x + w / 2, obj.y - 4);
+          ctx.fillText(labelText, obj.x + w / 2, obj.y - 4);
         }
       }
 
@@ -908,12 +1343,11 @@ export default function HomeOfficeCanvas() {
         // ── Context sharing connections ──
         for (const [, indices] of taskGroups) {
           if (indices.length < 2) continue;
-          // Draw dotted connection line between agents sharing same task
           ctx.save();
           ctx.strokeStyle = C.accent;
           ctx.lineWidth = 1;
           ctx.setLineDash([2, 2]);
-          ctx.globalAlpha = 0.6;
+          ctx.globalAlpha = 0.5;
           for (let j = 0; j < indices.length - 1; j++) {
             const a = SLOTS[indices[j]];
             const b = SLOTS[indices[j + 1]];
@@ -923,7 +1357,7 @@ export default function HomeOfficeCanvas() {
             ctx.moveTo(ax, ay);
             ctx.lineTo(bx, by);
             ctx.stroke();
-            // Shared context icon (small circle) at midpoint
+            // Shared context icon at midpoint
             const mx = (ax + bx) / 2, my = (ay + by) / 2;
             ctx.setLineDash([]);
             ctx.globalAlpha = 0.8;
@@ -931,7 +1365,7 @@ export default function HomeOfficeCanvas() {
             pxRect(ctx, mx - 2, my - 2, 4, 4, C.white);
             pxRect(ctx, mx - 1, my - 1, 2, 2, C.accent);
             ctx.setLineDash([2, 2]);
-            ctx.globalAlpha = 0.6;
+            ctx.globalAlpha = 0.5;
           }
           ctx.restore();
         }
@@ -940,13 +1374,18 @@ export default function HomeOfficeCanvas() {
       // ── Custom Dot Art objects ──
       if (dotArts.length > 0) {
         const art = dotArts[dotArts.length - 1]; // show latest
-        const artScale = 1; // 1px per pixel
+        const artScale = 1;
         const artX = 50;
         const artY = 52;
-        // Small frame around the art
         const artW = art.gridSize * artScale;
         const artH = art.gridSize * artScale;
+        // Frame with shadow
+        ctx.save();
+        ctx.globalAlpha = 0.06;
+        pxRect(ctx, artX, artY, artW + 2, artH + 2, "#000");
+        ctx.restore();
         pxRect(ctx, artX - 1, artY - 1, artW + 2, artH + 2, C.woodDark);
+        pxRect(ctx, artX - 1, artY - 1, artW + 2, 1, C.woodMid);
         // Render pixel-by-pixel
         for (let py = 0; py < art.gridSize; py++) {
           for (let px = 0; px < art.gridSize; px++) {
@@ -959,6 +1398,36 @@ export default function HomeOfficeCanvas() {
         }
       }
 
+      // ── Floating dust particles ──
+      dustTickRef.current++;
+      const motes = dustRef.current;
+      ctx.save();
+      for (const mote of motes) {
+        // Update position
+        mote.x += mote.vx;
+        mote.y += mote.vy;
+        // Wrap around
+        if (mote.y > roomH) { mote.y = -2; mote.x = Math.random() * roomW; }
+        if (mote.x < 0) mote.x = roomW;
+        if (mote.x > roomW) mote.x = 0;
+
+        // Only show dust in sunbeam area (brighter) or faintly elsewhere
+        const inSunbeam = winObj && mote.x > winObj.x - 10 && mote.x < winObj.x + 70 && mote.y > winObj.y;
+        ctx.globalAlpha = inSunbeam ? mote.alpha * 1.5 : mote.alpha * 0.3;
+        ctx.fillStyle = inSunbeam ? C.dustColor : C.light;
+        ctx.fillRect(Math.round(mote.x), Math.round(mote.y), mote.size, mote.size);
+      }
+      ctx.restore();
+
+      // ── Warm ambient vignette ──
+      ctx.save();
+      const vigGrad = ctx.createRadialGradient(roomW / 2, roomH / 2, roomW * 0.3, roomW / 2, roomH / 2, roomW * 0.7);
+      vigGrad.addColorStop(0, "rgba(0,0,0,0)");
+      vigGrad.addColorStop(1, "rgba(20,15,10,0.08)");
+      ctx.fillStyle = vigGrad;
+      ctx.fillRect(0, 0, roomW, roomH);
+      ctx.restore();
+
       ctx.restore();
     },
     [objects, hoveredObj, dragObj, lampOn, agentState, animFrame, dotArts, sessions]
@@ -969,6 +1438,7 @@ export default function HomeOfficeCanvas() {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
+    let animId: number;
     const draw = () => {
       const { width, height } = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -980,12 +1450,11 @@ export default function HomeOfficeCanvas() {
       ctx.imageSmoothingEnabled = false;
       ctx.scale(dpr, dpr);
       drawScene(ctx, width, height);
+      animId = requestAnimationFrame(draw);
     };
 
     draw();
-    const ro = new ResizeObserver(draw);
-    ro.observe(container);
-    return () => ro.disconnect();
+    return () => cancelAnimationFrame(animId);
   }, [drawScene]);
 
   const toRoom = (mx: number, my: number): [number, number] => {
@@ -1062,7 +1531,6 @@ export default function HomeOfficeCanvas() {
         ];
         const maxA = Math.min(agentSess.length, 6);
         for (let i = 0; i < maxA; i++) {
-          // Hit area covers agent + desk area (~56×50)
           if (rx >= SLOTS[i].dx && rx <= SLOTS[i].dx + 56 && ry >= SLOTS[i].dy - 20 && ry <= SLOTS[i].dy + 46) {
             setActiveSession(agentSess[i].id);
             setCurrentPage("terminal");
@@ -1075,7 +1543,6 @@ export default function HomeOfficeCanvas() {
 
   // Add object from catalog
   const addFromCatalog = (item: CatalogItem) => {
-    // Place at a default position in the room center area
     const newObj: Omit<RoomObj, "draw"> = {
       id: item.id,
       label: item.label,
@@ -1115,7 +1582,6 @@ export default function HomeOfficeCanvas() {
           }`}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showCatalog ? "var(--color-accent)" : "var(--color-text-secondary)"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          {/* Grid/layout icon representing furniture arrangement */}
           <rect x="3" y="3" width="7" height="7" rx="1" />
           <rect x="14" y="3" width="7" height="4" rx="1" />
           <rect x="14" y="11" width="7" height="10" rx="1" />

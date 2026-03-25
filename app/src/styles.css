@@ -138,6 +138,11 @@ html, body, #root {
   opacity: 0.85 !important;
   color: #ffffff !important;
 }
+/* Light mode: override xterm dim text to be visible */
+[data-theme="light"] .xterm-dim {
+  opacity: 0.85 !important;
+  color: #000000 !important;
+}
 
 /* Scrollbar inside xterm — rounded capsule */
 .xterm-viewport::-webkit-scrollbar {

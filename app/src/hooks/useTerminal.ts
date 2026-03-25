@@ -43,15 +43,15 @@ const TERMINAL_THEME_LIGHT = {
   blue: "#0066cc",
   magenta: "#6c5ce7",
   cyan: "#00897b",
-  white: "#f5f5f7",
-  brightBlack: "#86868b",
+  white: "#888888",
+  brightBlack: "#000000",
   brightRed: "#e17055",
   brightGreen: "#00b894",
   brightYellow: "#fdcb6e",
   brightBlue: "#74b9ff",
   brightMagenta: "#a29bfe",
   brightCyan: "#55efc4",
-  brightWhite: "#ffffff",
+  brightWhite: "#aaaaaa",
 };
 
 function getTerminalTheme() {
@@ -194,18 +194,19 @@ export function useTerminal(
       };
 
       if (mode === "ai" && aiModel) {
-        // AI CLI mode — for Codex, pass system prompt at spawn time via --instructions
+        // AI CLI mode
         const agentPreset = agentRole ? getAgentPreset(agentRole) : null;
-        const spawnOpts: { cols: number; rows: number; systemPrompt?: string } = { cols, rows };
-        if (agentPreset && aiModel === "chatgpt") {
-          spawnOpts.systemPrompt = agentPreset.systemPrompt;
-        }
 
-        api.ai.spawn(sessionId, aiModel, spawnOpts).then(async () => {
-          // Inject agent system prompt (Claude only — Codex uses --instructions at spawn)
-          if (agentPreset && aiModel === "claude") {
+        api.ai.spawn(sessionId, aiModel, { cols, rows }).then(async () => {
+          // Inject agent system prompt after spawn
+          if (agentPreset) {
             await new Promise((r) => setTimeout(r, 1500));
-            api.ai.writeHidden(sessionId, `/system ${agentPreset.systemPrompt}`);
+            if (aiModel === "claude") {
+              api.ai.writeHidden(sessionId, `/system ${agentPreset.systemPrompt}`);
+            } else {
+              // Codex: send system prompt as first user message
+              api.ai.writeHidden(sessionId, `System instruction: ${agentPreset.systemPrompt}\r`);
+            }
           }
 
           // Inject previous agent contexts for the same task (both Claude & Codex)
@@ -304,6 +305,21 @@ export function useTerminal(
     // Don't dispose on unmount — keep for tab switching
     return () => {};
   }, [sessionId, mode, aiModel, containerRef, readOnly]);
+
+  // Theme change handler — update existing terminal when app theme changes
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const term = terminalInstances.get(sessionId);
+      if (term) {
+        term.options.theme = getTerminalTheme();
+      }
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, [sessionId]);
 
   // Resize handler
   useEffect(() => {
