@@ -20,6 +20,7 @@ import { useAppVM } from "../../viewmodels/app.vm";
 import type { Task, TaskStatus, TaskPriority, TodoItem } from "../../types/models";
 import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../viewmodels/session.vm";
 import StartSessionModal from "./StartSessionModal";
+import WorkTimerModal from "./WorkTimerModal";
 
 function toTodoItem(row: Record<string, unknown>): TodoItem {
   return {
@@ -245,6 +246,8 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
   const newTodoRef = useRef<HTMLInputElement>(null);
 
   const [showStartModal, setShowStartModal] = useState(false);
+  const [showStartChoice, setShowStartChoice] = useState(false);
+  const [showWorkTimer, setShowWorkTimer] = useState(false);
 
   // Initialize when modal opens
   useEffect(() => {
@@ -571,16 +574,77 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
 
         {/* Footer actions */}
         <div style={{ display: "flex", gap: 8, marginTop: 24, justifyContent: "space-between" }}>
-          <button
-            onClick={() => setShowStartModal(true)}
-            style={{
-              padding: "8px 18px", borderRadius: 8, fontSize: 13,
-              border: "none", background: "var(--color-accent)", color: "#fff",
-              cursor: "pointer", fontWeight: 600, fontFamily: "Pretendard, sans-serif",
-            }}
-          >
-            ▶ 세션 시작
-          </button>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowStartChoice((v) => !v)}
+              style={{
+                padding: "8px 18px", borderRadius: 8, fontSize: 13,
+                border: "none", background: "var(--color-accent)", color: "#fff",
+                cursor: "pointer", fontWeight: 600, fontFamily: "Pretendard, sans-serif",
+              }}
+            >
+              ▶ 시작
+            </button>
+
+            {/* Start choice popover */}
+            {showStartChoice && (
+              <div style={{
+                position: "absolute", bottom: "calc(100% + 6px)", left: 0,
+                width: 200, padding: 6, borderRadius: 10,
+                background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 10,
+                display: "flex", flexDirection: "column", gap: 2,
+              }}>
+                <button
+                  onClick={() => {
+                    setShowStartChoice(false);
+                    setShowWorkTimer(true);
+                    if (task.status === "todo") updateTask(taskId, { status: "in_progress" });
+                  }}
+                  style={{
+                    padding: "10px 12px", borderRadius: 8, fontSize: 13, textAlign: "left",
+                    border: "none", background: "transparent", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 10,
+                    color: "var(--color-text-primary)", fontFamily: "Pretendard, sans-serif",
+                  }}
+                  className="hover:bg-bg-hover"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>작업 타이머</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 1 }}>집중 타이머로 작업</div>
+                  </div>
+                </button>
+                <div style={{ height: 1, background: "var(--color-border)", margin: "2px 8px" }} />
+                <button
+                  onClick={() => {
+                    setShowStartChoice(false);
+                    setShowStartModal(true);
+                  }}
+                  style={{
+                    padding: "10px 12px", borderRadius: 8, fontSize: 13, textAlign: "left",
+                    border: "none", background: "transparent", cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 10,
+                    color: "var(--color-text-primary)", fontFamily: "Pretendard, sans-serif",
+                  }}
+                  className="hover:bg-bg-hover"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2" />
+                    <polyline points="7,10 10,13 7,16" />
+                    <line x1="13" y1="16" x2="17" y2="16" />
+                  </svg>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>세션 열기</div>
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 1 }}>터미널 / AI 에이전트</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
 
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -620,6 +684,18 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
           taskTitle={task.title}
           onStart={handleStart}
           onClose={() => setShowStartModal(false)}
+        />
+      )}
+
+      {showWorkTimer && (
+        <WorkTimerModal
+          taskId={taskId}
+          taskTitle={task.title}
+          projectName={project?.name}
+          onClose={() => setShowWorkTimer(false)}
+          onStatusChange={(status) => {
+            updateTask(taskId, { status });
+          }}
         />
       )}
     </div>
