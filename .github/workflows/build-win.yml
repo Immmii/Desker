@@ -29,6 +29,29 @@ jobs:
         working-directory: app
         run: npx electron-builder --win
 
+      - name: Smoke test - app launches without crash
+        working-directory: app
+        shell: powershell
+        run: |
+          $exe = Get-ChildItem -Path release\win-unpacked\Desker.exe -ErrorAction SilentlyContinue
+          if (-not $exe) {
+            Write-Error "Desker.exe not found in win-unpacked"
+            exit 1
+          }
+          Write-Host "Found: $($exe.FullName) ($([math]::Round($exe.Length/1MB, 1)) MB)"
+
+          # Launch app, wait 10s, check if process is still alive
+          $proc = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 10
+
+          if ($proc.HasExited) {
+            Write-Error "App crashed on startup! Exit code: $($proc.ExitCode)"
+            exit 1
+          }
+
+          Write-Host "App is running (PID: $($proc.Id)) - smoke test PASSED"
+          Stop-Process -Id $proc.Id -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
