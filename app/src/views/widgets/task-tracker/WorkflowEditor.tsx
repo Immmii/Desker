@@ -7,6 +7,8 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type Connection,
   type Node,
   type Edge,
@@ -440,13 +442,13 @@ function Sidebar() {
 
 let nodeIdCounter = 100;
 
-export default function WorkflowEditor() {
+function WorkflowEditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(DEFAULT_NODES);
   const [edges, setEdges, onEdgesChange] = useEdgesState(DEFAULT_EDGES);
   const [workflowName, setWorkflowName] = useState("개발 파이프라인");
   const [isRunning, setIsRunning] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [reactFlowInstance, setReactFlowInstance] = useState<{ screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number } } | null>(null);
+  const { screenToFlowPosition } = useReactFlow();
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -474,9 +476,9 @@ export default function WorkflowEditor() {
     (e: React.DragEvent) => {
       e.preventDefault();
       const rawType = e.dataTransfer.getData("application/reactflow");
-      if (!rawType || !reactFlowInstance) return;
+      if (!rawType) return;
 
-      const position = reactFlowInstance.screenToFlowPosition({
+      const position = screenToFlowPosition({
         x: e.clientX,
         y: e.clientY,
       });
@@ -504,7 +506,7 @@ export default function WorkflowEditor() {
       const newNode: Node = { id, type, position, data };
       setNodes((nds) => [...nds, newNode]);
     },
-    [reactFlowInstance, setNodes]
+    [screenToFlowPosition, setNodes]
   );
 
   const handleReset = () => {
@@ -616,10 +618,10 @@ export default function WorkflowEditor() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onInit={setReactFlowInstance}
             onDrop={onDrop}
             onDragOver={onDragOver}
             nodeTypes={nodeTypes}
+            deleteKeyCode={["Backspace", "Delete"]}
             fitView
             fitViewOptions={{ padding: 0.3 }}
             proOptions={{ hideAttribution: true }}
@@ -683,5 +685,13 @@ export default function WorkflowEditor() {
         }
       `}</style>
     </div>
+  );
+}
+
+export default function WorkflowEditor() {
+  return (
+    <ReactFlowProvider>
+      <WorkflowEditorInner />
+    </ReactFlowProvider>
   );
 }
