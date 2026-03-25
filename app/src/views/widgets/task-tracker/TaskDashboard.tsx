@@ -315,14 +315,40 @@ function TaskEditForm({ task, onClose }: { task: Task; onClose: () => void }) {
   );
 }
 
-type ViewMode = "list" | "kanban" | "calendar" | "workflow";
+type ViewMode = "kanban" | "calendar" | "workflow";
 
-const VIEW_OPTIONS: { mode: ViewMode; icon: string; label: string }[] = [
-  { mode: "kanban", icon: "⊞", label: "상태별" },
-  { mode: "list", icon: "☰", label: "리스트" },
+interface ViewOption { mode: ViewMode; icon: string; label: string }
+
+const DEFAULT_VIEW_OPTIONS: ViewOption[] = [
   { mode: "calendar", icon: "📅", label: "캘린더" },
+  { mode: "kanban", icon: "⊞", label: "상태별" },
   { mode: "workflow", icon: "⬡", label: "워크플로우" },
 ];
+
+const TAB_ORDER_KEY = "desker:task-tab-order";
+
+function loadTabOrder(): ViewOption[] {
+  try {
+    const saved = localStorage.getItem(TAB_ORDER_KEY);
+    if (!saved) return DEFAULT_VIEW_OPTIONS;
+    const order: ViewMode[] = JSON.parse(saved);
+    // Rebuild from saved order, filtering out invalid modes
+    const valid = order
+      .map((mode) => DEFAULT_VIEW_OPTIONS.find((o) => o.mode === mode))
+      .filter(Boolean) as ViewOption[];
+    // Add any missing tabs at the end
+    for (const opt of DEFAULT_VIEW_OPTIONS) {
+      if (!valid.find((v) => v.mode === opt.mode)) valid.push(opt);
+    }
+    return valid;
+  } catch {
+    return DEFAULT_VIEW_OPTIONS;
+  }
+}
+
+function saveTabOrder(tabs: ViewOption[]) {
+  localStorage.setItem(TAB_ORDER_KEY, JSON.stringify(tabs.map((t) => t.mode)));
+}
 
 function TaskRowMenu({ task }: { task: Task }) {
   const { removeTask } = useProjectVM();
@@ -519,13 +545,13 @@ function TaskRow({ task, onOpenDetail }: { task: Task; onOpenDetail: (id: string
 
 export default function TaskDashboard() {
   const { projects, tasks, selectedProjectId } = useProjectVM();
-  const [view, setView] = useState<ViewMode>("kanban");
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [viewTabs, setViewTabs] = useState<ViewOption[]>(loadTabOrder);
+  const [view, setView] = useState<ViewMode>(viewTabs[0]?.mode ?? "calendar");
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
-  const isJournal = selectedProject?.type === "journal";
-  const activeView = isJournal && view === "kanban" ? "list" : view;
+  const activeView = view;
 
   const filteredTasks = selectedProjectId
     ? tasks.filter((t) => t.projectId === selectedProjectId)
@@ -545,18 +571,36 @@ export default function TaskDashboard() {
           {selectedProject ? `${selectedProject.icon} ${selectedProject.name}` : "📋 전체 태스크"}
         </h1>
 
-        {/* View toggle */}
+        {/* View toggle (draggable tabs) */}
         <div style={{ display: "flex", gap: 2, marginLeft: 16 }}>
-          {VIEW_OPTIONS
-            .filter((opt) => !(isJournal && opt.mode === "kanban"))
-            .map((opt) => (
+          {viewTabs.map((opt, idx) => (
             <button
               key={opt.mode}
+              draggable
               onClick={() => setView(opt.mode)}
-              style={{ fontSize: 13, padding: "5px 12px", borderRadius: 6 }}
-              className={`cursor-pointer transition-colors ${
+              onDragStart={() => setDragIdx(idx)}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIdx === null || dragIdx === idx) return;
+                const updated = [...viewTabs];
+                const [moved] = updated.splice(dragIdx, 1);
+                updated.splice(idx, 0, moved);
+                setViewTabs(updated);
+                saveTabOrder(updated);
+                setDragIdx(null);
+              }}
+              onDragEnd={() => setDragIdx(null)}
+              style={{
+                fontSize: 13, padding: "5px 12px", borderRadius: 6,
+                cursor: "grab", border: "none", background: "transparent",
+                opacity: dragIdx === idx ? 0.4 : 1,
+                transition: "all 0.15s",
+                fontFamily: "Pretendard, sans-serif",
+              }}
+              className={`transition-colors ${
                 activeView === opt.mode
-                  ? "bg-accent/15 text-accent font-medium"
+                  ? "!bg-accent/15 text-accent font-medium"
                   : "text-text-secondary hover:bg-bg-hover"
               }`}
             >
@@ -577,29 +621,6 @@ export default function TaskDashboard() {
         {activeView === "kanban" && <KanbanBoard />}
         {activeView === "calendar" && <CalendarView />}
         {activeView === "workflow" && <WorkflowEditor />}
-        {activeView === "list" && (
-          <div style={{ padding: "12px 24px" }} className="h-full overflow-y-auto">
-            {filteredTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-text-secondary">
-                <span style={{ fontSize: 32, marginBottom: 12 }}>📝</span>
-                <p style={{ fontSize: 15 }}>태스크가 없습니다</p>
-              </div>
-            ) : (
-              filteredTasks.map((task) => <TaskRow key={task.id} task={task} onOpenDetail={setDetailTaskId} />)
-            )}
-            {showAddForm ? (
-              <TaskAddForm onClose={() => setShowAddForm(false)} />
-            ) : (
-              <button
-                onClick={() => setShowAddForm(true)}
-                style={{ padding: "12px 16px", fontSize: 14, borderRadius: 10, marginTop: 8, width: "100%" }}
-                className="text-left text-text-secondary/40 hover:text-accent hover:bg-bg-hover/30 transition-colors cursor-pointer border border-dashed border-border/40"
-              >
-                + 새 태스크 추가
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {detailTaskId && (
