@@ -21,17 +21,133 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+// ─── SVG Icons ──────────────────────────────────────────────────────────────
+
+const svgProps = (color: string, size = 16) => ({
+  width: size, height: size, viewBox: "0 0 24 24", fill: "none",
+  stroke: color, strokeWidth: "1.8", strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+});
+
+function IconTrigger({ color = "#6c5ce7", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" fill={color} stroke="none" />
+    </svg>
+  );
+}
+
+function IconPlanning({ color = "#74b9ff", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <rect x="4" y="4" width="16" height="18" rx="2" />
+      <line x1="4" y1="10" x2="20" y2="10" />
+      <line x1="12" y1="4" x2="12" y2="22" />
+      <rect x="8" y="1" width="8" height="4" rx="1" fill={color} stroke={color} />
+    </svg>
+  );
+}
+
+function IconClient({ color = "#a29bfe", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+      <polyline points="7 8 10 11 7 14" />
+      <line x1="13" y1="14" x2="17" y2="14" />
+    </svg>
+  );
+}
+
+function IconServer({ color = "#55efc4", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <rect x="3" y="2" width="18" height="6" rx="1.5" />
+      <rect x="3" y="10" width="18" height="6" rx="1.5" />
+      <circle cx="7" cy="5" r="1" fill={color} stroke="none" />
+      <circle cx="7" cy="13" r="1" fill={color} stroke="none" />
+      <line x1="11" y1="5" x2="17" y2="5" />
+      <line x1="11" y1="13" x2="17" y2="13" />
+      <line x1="7" y1="18" x2="7" y2="22" />
+      <line x1="17" y1="18" x2="17" y2="22" />
+    </svg>
+  );
+}
+
+function IconTesting({ color = "#ffeaa7", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <path d="M9 3h6v5l4 9a1.5 1.5 0 0 1-1.4 2H6.4A1.5 1.5 0 0 1 5 17l4-9V3" />
+      <line x1="9" y1="3" x2="15" y2="3" strokeWidth="2.5" />
+      <path d="M7 15h10" strokeDasharray="2 2" />
+      <circle cx="10" cy="13" r="0.8" fill={color} stroke="none" />
+      <circle cx="14" cy="16" r="0.8" fill={color} stroke="none" />
+    </svg>
+  );
+}
+
+function IconQA({ color = "#ff9ff3", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <path d="M12 2l8 4v6c0 5.5-3.8 8.2-8 10-4.2-1.8-8-4.5-8-10V6l8-4z" />
+      <polyline points="8 12 11 15 16 9" />
+    </svg>
+  );
+}
+
+function IconDevOps({ color = "#fd79a8", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="18" cy="18" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <path d="M6 8.5v4c0 2.5 2.5 4.5 5 4.5h3" />
+      <line x1="6" y1="8.5" x2="6" y2="15.5" />
+    </svg>
+  );
+}
+
+function IconCondition({ color = "#fdcb6e", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <path d="M12 3l8 9-8 9-8-9z" />
+      <line x1="9" y1="12" x2="15" y2="12" />
+    </svg>
+  );
+}
+
+function IconEnd({ color = "#55efc4", size = 16 }) {
+  return (
+    <svg {...svgProps(color, size)}>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="8 12 11 15 16 9" />
+    </svg>
+  );
+}
+
+const NODE_ICONS: Record<string, (props: { color: string; size?: number }) => React.ReactNode> = {
+  trigger: IconTrigger,
+  planning: IconPlanning,
+  client: IconClient,
+  server: IconServer,
+  testing: IconTesting,
+  qa: IconQA,
+  devops: IconDevOps,
+  condition: IconCondition,
+  end: IconEnd,
+};
+
 // ─── Agent role definitions ─────────────────────────────────────────────────
 
 type AgentRole = "planning" | "client" | "server" | "testing" | "qa" | "devops";
 
-const AGENT_ROLES: Record<AgentRole, { label: string; icon: string; color: string }> = {
-  planning: { label: "기획", icon: "📝", color: "#74b9ff" },
-  client:   { label: "클라이언트", icon: "🖥", color: "#a29bfe" },
-  server:   { label: "서버", icon: "⚙", color: "#55efc4" },
-  testing:  { label: "테스트", icon: "🧪", color: "#ffeaa7" },
-  qa:       { label: "QA", icon: "✅", color: "#ff9ff3" },
-  devops:   { label: "DevOps", icon: "📊", color: "#fd79a8" },
+const AGENT_ROLES: Record<AgentRole, { label: string; color: string }> = {
+  planning: { label: "기획", color: "#74b9ff" },
+  client:   { label: "클라이언트", color: "#a29bfe" },
+  server:   { label: "서버", color: "#55efc4" },
+  testing:  { label: "테스트", color: "#ffeaa7" },
+  qa:       { label: "QA", color: "#ff9ff3" },
+  devops:   { label: "DevOps", color: "#fd79a8" },
 };
 
 // ─── Node data types ─────────────────────────────────────────────────────────
@@ -88,7 +204,7 @@ function TriggerNode({ data }: NodeProps<Node<TriggerNodeData>>) {
         }}
       />
       <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 16 }}>⚡</span>
+        <IconTrigger color="#6c5ce7" size={18} />
         <div>
           <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             트리거
@@ -106,6 +222,7 @@ function TriggerNode({ data }: NodeProps<Node<TriggerNodeData>>) {
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
   const [model, setModel] = useState<"claude" | "chatgpt">(data.model ?? "claude");
   const roleInfo = AGENT_ROLES[data.role];
+  const RoleIcon = NODE_ICONS[data.role];
 
   return (
     <div style={{ ...NODE_BASE, minWidth: 180 }}>
@@ -122,11 +239,10 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 14,
               flexShrink: 0,
             }}
           >
-            {roleInfo.icon}
+            {RoleIcon ? <RoleIcon color={roleInfo.color} size={16} /> : null}
           </span>
           <div>
             <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1 }}>
@@ -192,10 +308,9 @@ function ConditionNode({ data }: NodeProps<Node<ConditionNodeData>>) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 13,
           }}
         >
-          ⬦
+          <IconCondition color="#fdcb6e" size={15} />
         </span>
         <div>
           <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 1 }}>
@@ -259,7 +374,7 @@ function EndNode({ data }: NodeProps<Node<EndNodeData>>) {
       />
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 16 }}>🏁</span>
+        <IconEnd color="#55efc4" size={18} />
         <div>
           <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 2, textTransform: "uppercase", letterSpacing: "0.06em" }}>
             완료
@@ -338,15 +453,15 @@ const DEFAULT_EDGES: Edge[] = [
 // ─── Sidebar palette ──────────────────────────────────────────────────────────
 
 const PALETTE_ITEMS = [
-  { type: "trigger", label: "트리거", icon: "⚡", color: "#6c5ce7", desc: "시작 지점" },
-  { type: "agent:planning", label: "기획 Agent", icon: "📝", color: "#74b9ff", desc: "기획·명세" },
-  { type: "agent:client", label: "클라이언트 Agent", icon: "🖥", color: "#a29bfe", desc: "프론트엔드" },
-  { type: "agent:server", label: "서버 Agent", icon: "⚙", color: "#55efc4", desc: "백엔드" },
-  { type: "agent:testing", label: "테스트 Agent", icon: "🧪", color: "#ffeaa7", desc: "테스트" },
-  { type: "agent:qa", label: "QA Agent", icon: "✅", color: "#ff9ff3", desc: "품질 검증" },
-  { type: "agent:devops", label: "DevOps Agent", icon: "📊", color: "#fd79a8", desc: "Git·배포" },
-  { type: "condition", label: "조건 분기", icon: "⬦", color: "#fdcb6e", desc: "분기 처리" },
-  { type: "end", label: "완료", icon: "🏁", color: "#55efc4", desc: "파이프라인 끝" },
+  { type: "trigger", label: "트리거", iconKey: "trigger", color: "#6c5ce7", desc: "시작 지점" },
+  { type: "agent:planning", label: "기획 Agent", iconKey: "planning", color: "#74b9ff", desc: "기획·명세" },
+  { type: "agent:client", label: "클라이언트 Agent", iconKey: "client", color: "#a29bfe", desc: "프론트엔드" },
+  { type: "agent:server", label: "서버 Agent", iconKey: "server", color: "#55efc4", desc: "백엔드" },
+  { type: "agent:testing", label: "테스트 Agent", iconKey: "testing", color: "#ffeaa7", desc: "테스트" },
+  { type: "agent:qa", label: "QA Agent", iconKey: "qa", color: "#ff9ff3", desc: "품질 검증" },
+  { type: "agent:devops", label: "DevOps Agent", iconKey: "devops", color: "#fd79a8", desc: "Git·배포" },
+  { type: "condition", label: "조건 분기", iconKey: "condition", color: "#fdcb6e", desc: "분기 처리" },
+  { type: "end", label: "완료", iconKey: "end", color: "#55efc4", desc: "파이프라인 끝" },
 ];
 
 function Sidebar() {
@@ -416,12 +531,11 @@ function Sidebar() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 14,
                 flexShrink: 0,
                 borderLeft: `3px solid ${item.color}`,
               }}
             >
-              {item.icon}
+              {NODE_ICONS[item.iconKey]?.({ color: item.color, size: 14 })}
             </span>
             <div>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)" }}>
