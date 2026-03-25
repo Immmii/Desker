@@ -147,6 +147,35 @@ function runMigrations() {
       created_at TEXT NOT NULL
     );
   `);
+
+  // agent_messages table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_messages (
+      id TEXT PRIMARY KEY,
+      from_session_id TEXT NOT NULL,
+      to_session_id TEXT NOT NULL,
+      message_type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_messages_to ON agent_messages(to_session_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_messages_from ON agent_messages(from_session_id);
+  `);
+
+  // workflow_sessions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workflow_sessions (
+      id TEXT PRIMARY KEY,
+      task_id TEXT,
+      parent_session_id TEXT,
+      agent_role TEXT,
+      agent_env TEXT,
+      status TEXT NOT NULL DEFAULT 'idle',
+      result_summary TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 function seedDefaults() {
@@ -588,6 +617,80 @@ export const habitDb = {
     }
   },
 };
+
+// ── Agent Messages ──
+export function insertAgentMessage(msg: {
+  id: string;
+  from_session_id: string;
+  to_session_id: string;
+  message_type: string;
+  content: string;
+  created_at: string;
+}) {
+  db.prepare(
+    "INSERT INTO agent_messages (id, from_session_id, to_session_id, message_type, content, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(msg.id, msg.from_session_id, msg.to_session_id, msg.message_type, msg.content, msg.created_at);
+}
+
+export function getAgentMessages(sessionId: string) {
+  return db.prepare(
+    "SELECT * FROM agent_messages WHERE to_session_id = ? OR from_session_id = ? ORDER BY created_at ASC"
+  ).all(sessionId, sessionId);
+}
+
+// ── Workflow Sessions ──
+export function insertWorkflowSession(session: {
+  id: string;
+  task_id: string | null;
+  parent_session_id: string;
+  agent_role: string;
+  agent_env: string;
+  status: string;
+  result_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}) {
+  db.prepare(
+    "INSERT INTO workflow_sessions (id, task_id, parent_session_id, agent_role, agent_env, status, result_summary, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(
+    session.id,
+    session.task_id,
+    session.parent_session_id,
+    session.agent_role,
+    session.agent_env,
+    session.status,
+    session.result_summary,
+    session.created_at,
+    session.updated_at
+  );
+}
+
+export function updateWorkflowSession(id: string, updates: Record<string, unknown>) {
+  const fields = Object.keys(updates);
+  const sets = fields.map((f) => `${f} = ?`).join(", ");
+  const values = fields.map((f) => updates[f]);
+  db.prepare(`UPDATE workflow_sessions SET ${sets} WHERE id = ?`).run(...values, id);
+}
+
+export function getWorkflowSession(id: string) {
+  return db.prepare("SELECT * FROM workflow_sessions WHERE id = ?").get(id) as {
+    id: string;
+    task_id: string | null;
+    parent_session_id: string;
+    agent_role: string;
+    agent_env: string;
+    status: string;
+    result_summary: string | null;
+    created_at: string;
+    updated_at: string;
+  } | undefined;
+}
+
+export function getChildSessions(parentSessionId: string) {
+  return db.prepare(
+    "SELECT * FROM workflow_sessions WHERE parent_session_id = ? ORDER BY created_at ASC"
+  ).all(parentSessionId);
+}
 
 // ── Shortcuts ──
 export const shortcutDb = {
