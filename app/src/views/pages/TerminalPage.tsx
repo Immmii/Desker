@@ -21,7 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useSessionVM } from "../../viewmodels/session.vm";
 import { useAppVM } from "../../viewmodels/app.vm";
 import { useAiVM } from "../../viewmodels/ai.vm";
-import { useTerminal, setPendingFiles } from "../../hooks/useTerminal";
+import { useTerminal, setPendingFiles, refitAllTerminals } from "../../hooks/useTerminal";
 import MathOverlay, { type MathBlock } from "../widgets/terminal/MathOverlay";
 import type { TerminalMode, AiModel, TerminalSession, AgentRole, AgentEnvironment } from "../../viewmodels/session.vm";
 import { getAgentPreset } from "../../viewmodels/session.vm";
@@ -967,6 +967,15 @@ export default function TerminalPage() {
 
   const isSplit = panes.length > 1;
   const canSplit = panes.length < MAX_PANES;
+
+  // Refit all terminals when pane count changes (split/unsplit)
+  const prevPaneCount = useRef(panes.length);
+  useEffect(() => {
+    if (prevPaneCount.current !== panes.length) {
+      prevPaneCount.current = panes.length;
+      refitAllTerminals();
+    }
+  }, [panes.length]);
 
   // Helper: find which pane a session belongs to
   const findPaneIndex = (sessionId: string): number =>

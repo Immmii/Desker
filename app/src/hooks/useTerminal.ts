@@ -62,6 +62,32 @@ function getTerminalTheme() {
 // Store terminals for reuse across re-renders
 const terminalInstances = new Map<string, Terminal>();
 
+// Store FitAddon instances for external refit
+const fitAddonInstances = new Map<string, FitAddon>();
+
+/** Force re-fit all terminal instances (call when pane layout changes) */
+export function refitAllTerminals() {
+  // Multiple attempts to let flex layout settle
+  for (const delay of [50, 150, 300]) {
+    setTimeout(() => {
+      fitAddonInstances.forEach((fit, sessionId) => {
+        try {
+          fit.fit();
+          const term = terminalInstances.get(sessionId);
+          if (term) {
+            const api = window.deskerAPI;
+            // Notify PTY/AI of new size
+            api.pty.resize(sessionId, term.cols, term.rows).catch(() => {});
+            api.ai.resize(sessionId, term.cols, term.rows).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+      });
+    }, delay);
+  }
+}
+
 // Pending file paths per session (set by file drop, consumed on Enter)
 export type PendingFile = { name: string; path: string };
 const pendingFilesMap = new Map<string, { files: PendingFile[]; onClear: () => void }>();
@@ -114,6 +140,7 @@ export function useTerminal(
       const fit = new FitAddon();
       term.loadAddon(fit);
       fitRef.current = fit;
+      fitAddonInstances.set(sessionId, fit);
       // Multiple fit attempts to handle layout settling
       requestAnimationFrame(() => {
         try { fit.fit(); } catch {}
@@ -141,6 +168,7 @@ export function useTerminal(
     term.loadAddon(new WebLinksAddon());
     term.open(containerRef.current);
     fitRef.current = fit;
+    fitAddonInstances.set(sessionId, fit);
 
     terminalInstances.set(sessionId, term);
 
@@ -355,6 +383,7 @@ export function useTerminal(
         cleanup?.();
         term.dispose();
         terminalInstances.delete(sessionId);
+        fitAddonInstances.delete(sessionId);
       }
       const api = window.deskerAPI;
       if (mode === "ai") {
