@@ -164,6 +164,19 @@ function IconPuzzle({ color = "#fff", size = 22 }) {
   );
 }
 
+function IconMcp({ color = "#00cec9", size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="9" width="6" height="6" rx="1.5" />
+      <rect x="16" y="9" width="6" height="6" rx="1.5" />
+      <line x1="8" y1="12" x2="11" y2="12" />
+      <line x1="13" y1="12" x2="16" y2="12" />
+      <line x1="11" y1="9" x2="11" y2="15" />
+      <line x1="13" y1="9" x2="13" y2="15" />
+    </svg>
+  );
+}
+
 const NODE_ICONS: Record<string, (props: { color: string; size?: number }) => React.ReactNode> = {
   trigger: IconTrigger,
   planning: IconPlanning,
@@ -177,6 +190,7 @@ const NODE_ICONS: Record<string, (props: { color: string; size?: number }) => Re
   task: IconTask,
   research: IconResearch,
   docs: IconDocs,
+  mcp: IconMcp,
 };
 
 // ─── Agent role definitions ─────────────────────────────────────────────────
@@ -204,7 +218,6 @@ interface TriggerNodeData extends Record<string, unknown> {
 interface AgentNodeData extends Record<string, unknown> {
   role: AgentRole;
   model: "claude" | "chatgpt";
-  mcpTools?: string[];
 }
 
 interface ConditionNodeData extends Record<string, unknown> {
@@ -213,6 +226,11 @@ interface ConditionNodeData extends Record<string, unknown> {
 
 interface EndNodeData extends Record<string, unknown> {
   label: string;
+}
+
+interface McpNodeData extends Record<string, unknown> {
+  mcpName: string;
+  mcpType: string; // "stdio" | "http" | "unknown"
 }
 
 // ─── Shared node styles ───────────────────────────────────────────────────────
@@ -267,55 +285,9 @@ function TriggerNode({ data }: NodeProps<Node<TriggerNodeData>>) {
 
 function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
   const [model, setModel] = useState<"claude" | "chatgpt">(data.model ?? "claude");
-  const [mcpTools, setMcpTools] = useState<string[]>(data.mcpTools ?? []);
-  const [showMcpDropdown, setShowMcpDropdown] = useState(false);
-  const [mcpServers, setMcpServers] = useState<string[]>([]);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const roleInfo = AGENT_ROLES[data.role];
   const RoleIcon = NODE_ICONS[data.role];
-
-  // Fetch MCP servers when dropdown opens
-  useEffect(() => {
-    if (!showMcpDropdown) return;
-    const fetchServers = async () => {
-      try {
-        if (window.deskerAPI?.mcp?.list) {
-          const servers = await window.deskerAPI.mcp.list();
-          setMcpServers(Object.keys(servers));
-        }
-      } catch {
-        setMcpServers([]);
-      }
-    };
-    fetchServers();
-  }, [showMcpDropdown]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!showMcpDropdown) return;
-    const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as HTMLElement)) {
-        setShowMcpDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showMcpDropdown]);
-
-  const toggleMcp = (server: string) => {
-    setMcpTools((prev) =>
-      prev.includes(server) ? prev.filter((s) => s !== server) : [...prev, server]
-    );
-  };
-
-  const removeMcp = (server: string) => {
-    setMcpTools((prev) => prev.filter((s) => s !== server));
-  };
-
-  // MCP tag colors cycle
-  const MCP_COLORS = ["#6c5ce7", "#0984e3", "#00b894", "#e17055", "#fdcb6e", "#fd79a8"];
-  const mcpColor = (i: number) => MCP_COLORS[i % MCP_COLORS.length];
 
   return (
     <div style={{ ...NODE_BASE, minWidth: 200 }}>
@@ -380,131 +352,58 @@ function AgentNode({ data }: NodeProps<Node<AgentNodeData>>) {
           <option value="claude">Claude</option>
           <option value="chatgpt">ChatGPT</option>
         </select>
+      </div>
+      <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
+    </div>
+  );
+}
 
-        {/* MCP section */}
-        <div style={{ marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
-            <span style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-              MCP 도구
-            </span>
-            <div ref={dropdownRef} style={{ position: "relative" }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowMcpDropdown((v) => !v); }}
-                style={{
-                  padding: "2px 7px",
-                  borderRadius: 5,
-                  border: "1px solid var(--color-border)",
-                  background: showMcpDropdown ? "var(--color-accent)" : "transparent",
-                  color: showMcpDropdown ? "#fff" : "var(--color-text-secondary)",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  fontFamily: "Pretendard, sans-serif",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                  transition: "all 0.15s",
-                }}
-              >
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                MCP
-              </button>
+// ─── McpNode ──────────────────────────────────────────────────────────────────
 
-              {showMcpDropdown && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    bottom: "calc(100% + 4px)",
-                    zIndex: 100,
-                    background: "var(--color-bg-secondary)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: 8,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                    minWidth: 180,
-                    padding: "6px 0",
-                  }}
-                >
-                  {mcpServers.length === 0 ? (
-                    <div style={{ padding: "8px 14px", fontSize: 12, color: "var(--color-text-secondary)" }}>
-                      MCP 서버 없음
-                    </div>
-                  ) : (
-                    mcpServers.map((server, i) => (
-                      <div
-                        key={server}
-                        onClick={() => toggleMcp(server)}
-                        style={{
-                          padding: "7px 14px",
-                          fontSize: 12,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          color: "var(--color-text-primary)",
-                          background: mcpTools.includes(server) ? "var(--color-bg-hover)" : "transparent",
-                          transition: "background 0.1s",
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-hover)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = mcpTools.includes(server) ? "var(--color-bg-hover)" : "transparent")}
-                      >
-                        <span
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: "50%",
-                            background: mcpColor(i),
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{server}</span>
-                        {mcpTools.includes(server) && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#55efc4" strokeWidth="2.5" strokeLinecap="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+function McpNode({ data }: NodeProps<Node<McpNodeData>>) {
+  const MCP_COLOR = "#00cec9";
+  return (
+    <div style={{ ...NODE_BASE, minWidth: 180 }}>
+      <div style={{ height: 3, background: MCP_COLOR }} />
+      <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
+      <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: MCP_COLOR + "22",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <IconMcp color={MCP_COLOR} size={16} />
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>
+            MCP
           </div>
-
-          {/* Connected MCP tags */}
-          {mcpTools.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {mcpTools.map((server, i) => (
-                <span
-                  key={server}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    padding: "2px 6px 2px 7px",
-                    borderRadius: 10,
-                    background: mcpColor(mcpServers.indexOf(server) >= 0 ? mcpServers.indexOf(server) : i) + "25",
-                    border: `1px solid ${mcpColor(mcpServers.indexOf(server) >= 0 ? mcpServers.indexOf(server) : i)}55`,
-                    fontSize: 10,
-                    color: mcpColor(mcpServers.indexOf(server) >= 0 ? mcpServers.indexOf(server) : i),
-                    fontWeight: 600,
-                    maxWidth: 90,
-                  }}
-                >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{server}</span>
-                  <span
-                    onClick={(e) => { e.stopPropagation(); removeMcp(server); }}
-                    style={{ cursor: "pointer", opacity: 0.7, flexShrink: 0, lineHeight: 1 }}
-                  >
-                    ✕
-                  </span>
-                </span>
-              ))}
-            </div>
-          )}
+          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {data.mcpName}
+          </div>
         </div>
+        <span
+          style={{
+            fontSize: 9,
+            padding: "2px 6px",
+            borderRadius: 8,
+            background: MCP_COLOR + "25",
+            color: MCP_COLOR,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            flexShrink: 0,
+          }}
+        >
+          {data.mcpType}
+        </span>
       </div>
       <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
     </div>
@@ -613,6 +512,7 @@ const nodeTypes: NodeTypes = {
   agent: AgentNode,
   condition: ConditionNode,
   end: EndNode,
+  mcp: McpNode,
 };
 
 // ─── Edge defaults ─────────────────────────────────────────────────────────────
@@ -635,9 +535,9 @@ interface WorkflowData {
 
 const GENERAL_NODES: Node[] = [
   { id: "trigger-1", type: "trigger", position: { x: 40, y: 150 }, data: { label: "태스크 시작" } },
-  { id: "agent-task", type: "agent", position: { x: 240, y: 130 }, data: { role: "task", model: "claude", mcpTools: [] } },
-  { id: "agent-research", type: "agent", position: { x: 480, y: 130 }, data: { role: "research", model: "claude", mcpTools: [] } },
-  { id: "agent-docs", type: "agent", position: { x: 720, y: 130 }, data: { role: "docs", model: "claude", mcpTools: [] } },
+  { id: "agent-task", type: "agent", position: { x: 240, y: 130 }, data: { role: "task", model: "claude" } },
+  { id: "agent-research", type: "agent", position: { x: 480, y: 130 }, data: { role: "research", model: "claude" } },
+  { id: "agent-docs", type: "agent", position: { x: 720, y: 130 }, data: { role: "docs", model: "claude" } },
   { id: "end-1", type: "end", position: { x: 960, y: 155 }, data: { label: "완료" } },
 ];
 
@@ -650,11 +550,11 @@ const GENERAL_EDGES: Edge[] = [
 
 const DEV_NODES: Node[] = [
   { id: "trigger-1", type: "trigger", position: { x: 40, y: 180 }, data: { label: "태스크 시작" } },
-  { id: "agent-planning", type: "agent", position: { x: 240, y: 160 }, data: { role: "planning", model: "claude", mcpTools: [] } },
-  { id: "agent-client", type: "agent", position: { x: 460, y: 100 }, data: { role: "client", model: "claude", mcpTools: [] } },
-  { id: "agent-server", type: "agent", position: { x: 460, y: 260 }, data: { role: "server", model: "claude", mcpTools: [] } },
-  { id: "agent-testing", type: "agent", position: { x: 700, y: 160 }, data: { role: "testing", model: "claude", mcpTools: [] } },
-  { id: "agent-qa", type: "agent", position: { x: 920, y: 160 }, data: { role: "qa", model: "claude", mcpTools: [] } },
+  { id: "agent-planning", type: "agent", position: { x: 240, y: 160 }, data: { role: "planning", model: "claude" } },
+  { id: "agent-client", type: "agent", position: { x: 460, y: 100 }, data: { role: "client", model: "claude" } },
+  { id: "agent-server", type: "agent", position: { x: 460, y: 260 }, data: { role: "server", model: "claude" } },
+  { id: "agent-testing", type: "agent", position: { x: 700, y: 160 }, data: { role: "testing", model: "claude" } },
+  { id: "agent-qa", type: "agent", position: { x: 920, y: 160 }, data: { role: "qa", model: "claude" } },
   { id: "end-1", type: "end", position: { x: 1140, y: 185 }, data: { label: "완료" } },
 ];
 
@@ -691,24 +591,68 @@ function loadWorkflow(): WorkflowData | null {
   }
 }
 
-// ─── Sidebar palette ──────────────────────────────────────────────────────────
+// ─── Palette data ─────────────────────────────────────────────────────────────
 
-const PALETTE_ITEMS = [
-  { type: "trigger", label: "트리거", iconKey: "trigger", color: "#6c5ce7", desc: "시작 지점" },
-  { type: "agent:task", label: "태스크 Agent", iconKey: "task", color: "#6c5ce7", desc: "할 일 처리" },
-  { type: "agent:research", label: "리서치 Agent", iconKey: "research", color: "#0984e3", desc: "정보 수집" },
-  { type: "agent:docs", label: "문서화 Agent", iconKey: "docs", color: "#00b894", desc: "문서 작성" },
-  { type: "agent:planning", label: "기획 Agent", iconKey: "planning", color: "#74b9ff", desc: "기획·명세" },
-  { type: "agent:client", label: "클라이언트 Agent", iconKey: "client", color: "#a29bfe", desc: "프론트엔드" },
-  { type: "agent:server", label: "서버 Agent", iconKey: "server", color: "#55efc4", desc: "백엔드" },
-  { type: "agent:testing", label: "테스트 Agent", iconKey: "testing", color: "#ffeaa7", desc: "테스트" },
-  { type: "agent:qa", label: "QA Agent", iconKey: "qa", color: "#ff9ff3", desc: "품질 검증" },
-  { type: "agent:devops", label: "DevOps Agent", iconKey: "devops", color: "#fd79a8", desc: "Git·배포" },
-  { type: "condition", label: "조건 분기", iconKey: "condition", color: "#fdcb6e", desc: "분기 처리" },
-  { type: "end", label: "완료", iconKey: "end", color: "#55efc4", desc: "파이프라인 끝" },
+const GENERAL_PALETTE = [
+  { type: "trigger",        label: "트리거",        iconKey: "trigger",  color: "#6c5ce7" },
+  { type: "agent:task",     label: "태스크",         iconKey: "task",     color: "#6c5ce7" },
+  { type: "agent:research", label: "리서치",         iconKey: "research", color: "#0984e3" },
+  { type: "agent:docs",     label: "문서화",         iconKey: "docs",     color: "#00b894" },
+  { type: "condition",      label: "조건 분기",      iconKey: "condition", color: "#fdcb6e" },
+  { type: "end",            label: "완료",           iconKey: "end",      color: "#55efc4" },
 ];
 
+const DEV_PALETTE = [
+  { type: "trigger",          label: "트리거",    iconKey: "trigger",  color: "#6c5ce7" },
+  { type: "agent:planning",   label: "기획",      iconKey: "planning", color: "#74b9ff" },
+  { type: "agent:client",     label: "클라이언트", iconKey: "client",   color: "#a29bfe" },
+  { type: "agent:server",     label: "서버",      iconKey: "server",   color: "#55efc4" },
+  { type: "agent:testing",    label: "테스트",    iconKey: "testing",  color: "#ffeaa7" },
+  { type: "agent:qa",         label: "QA",        iconKey: "qa",       color: "#ff9ff3" },
+  { type: "agent:devops",     label: "DevOps",    iconKey: "devops",   color: "#fd79a8" },
+  { type: "condition",        label: "조건 분기", iconKey: "condition", color: "#fdcb6e" },
+  { type: "end",              label: "완료",      iconKey: "end",      color: "#55efc4" },
+];
+
+// ─── FloatingPalette (horizontal bottom bar with tabs) ───────────────────────
+
+type PaletteTab = "general" | "dev" | "mcp";
+
+interface McpServer {
+  name: string;
+  type: string;
+}
+
 function FloatingPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [tab, setTab] = useState<PaletteTab>("general");
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [mcpLoading, setMcpLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "mcp") return;
+    setMcpLoading(true);
+    const fetchServers = async () => {
+      try {
+        if (window.deskerAPI?.mcp?.list) {
+          const servers = await window.deskerAPI.mcp.list();
+          setMcpServers(
+            Object.entries(servers).map(([name, info]: [string, unknown]) => ({
+              name,
+              type: (info as { type?: string })?.type ?? "unknown",
+            }))
+          );
+        } else {
+          setMcpServers([]);
+        }
+      } catch {
+        setMcpServers([]);
+      } finally {
+        setMcpLoading(false);
+      }
+    };
+    fetchServers();
+  }, [tab]);
+
   const onDragStart = (e: React.DragEvent, nodeType: string) => {
     e.dataTransfer.setData("application/reactflow", nodeType);
     e.dataTransfer.effectAllowed = "move";
@@ -716,40 +660,272 @@ function FloatingPalette({ open, onClose }: { open: boolean; onClose: () => void
 
   if (!open) return null;
 
+  const activeItems = tab === "general" ? GENERAL_PALETTE : tab === "dev" ? DEV_PALETTE : null;
+
+  const TAB_BTN = (id: PaletteTab, label: string) => (
+    <button
+      key={id}
+      onClick={() => setTab(id)}
+      style={{
+        padding: "4px 12px",
+        borderRadius: 20,
+        border: "none",
+        background: tab === id ? "var(--color-accent)" : "transparent",
+        color: tab === id ? "#fff" : "var(--color-text-secondary)",
+        fontSize: 11,
+        fontWeight: tab === id ? 700 : 500,
+        cursor: "pointer",
+        fontFamily: "Pretendard, sans-serif",
+        transition: "all 0.15s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  const PaletteTile = ({ item }: { item: { type: string; label: string; iconKey: string; color: string } }) => (
+    <div
+      draggable
+      onDragStart={(e) => { onDragStart(e, item.type); onClose(); }}
+      title={item.label}
+      style={{
+        width: 64,
+        height: 64,
+        borderRadius: 10,
+        background: item.color + "15",
+        border: "1px solid " + item.color + "40",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        cursor: "grab",
+        flexShrink: 0,
+        transition: "all 0.13s",
+        userSelect: "none",
+      }}
+      onMouseEnter={(e) => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.background = item.color + "28";
+        el.style.borderColor = item.color + "90";
+        el.style.transform = "translateY(-3px)";
+        el.style.boxShadow = `0 6px 16px ${item.color}30`;
+      }}
+      onMouseLeave={(e) => {
+        const el = e.currentTarget as HTMLDivElement;
+        el.style.background = item.color + "15";
+        el.style.borderColor = item.color + "40";
+        el.style.transform = "none";
+        el.style.boxShadow = "none";
+      }}
+    >
+      <span
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 8,
+          background: item.color + "25",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {NODE_ICONS[item.iconKey]?.({ color: item.color, size: 16 })}
+      </span>
+      <span
+        style={{
+          fontSize: 9,
+          fontWeight: 600,
+          color: "var(--color-text-secondary)",
+          textAlign: "center",
+          lineHeight: 1.2,
+          maxWidth: 58,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {item.label}
+      </span>
+    </div>
+  );
+
+  const McpTile = ({ server }: { server: McpServer }) => {
+    const MCP_COLOR = "#00cec9";
+    return (
+      <div
+        draggable
+        onDragStart={(e) => { onDragStart(e, `mcp:${server.name}:${server.type}`); onClose(); }}
+        title={server.name}
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 10,
+          background: MCP_COLOR + "15",
+          border: "1px solid " + MCP_COLOR + "40",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          cursor: "grab",
+          flexShrink: 0,
+          transition: "all 0.13s",
+          userSelect: "none",
+        }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.background = MCP_COLOR + "28";
+          el.style.borderColor = MCP_COLOR + "90";
+          el.style.transform = "translateY(-3px)";
+          el.style.boxShadow = `0 6px 16px ${MCP_COLOR}30`;
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.background = MCP_COLOR + "15";
+          el.style.borderColor = MCP_COLOR + "40";
+          el.style.transform = "none";
+          el.style.boxShadow = "none";
+        }}
+      >
+        <span
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: MCP_COLOR + "25",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <IconMcp color={MCP_COLOR} size={16} />
+        </span>
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: "var(--color-text-secondary)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            maxWidth: 58,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {server.name}
+        </span>
+      </div>
+    );
+  };
+
+  // Generic MCP placeholder tile
+  const GenericMcpTile = () => {
+    const MCP_COLOR = "#00cec9";
+    return (
+      <div
+        draggable
+        onDragStart={(e) => { onDragStart(e, "mcp:MCP 도구:unknown"); onClose(); }}
+        title="MCP 도구"
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 10,
+          background: MCP_COLOR + "15",
+          border: "1.5px dashed " + MCP_COLOR + "60",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          cursor: "grab",
+          flexShrink: 0,
+          transition: "all 0.13s",
+          userSelect: "none",
+        }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.background = MCP_COLOR + "28";
+          el.style.transform = "translateY(-3px)";
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLDivElement;
+          el.style.background = MCP_COLOR + "15";
+          el.style.transform = "none";
+        }}
+      >
+        <span
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: MCP_COLOR + "25",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <IconMcp color={MCP_COLOR} size={16} />
+        </span>
+        <span style={{ fontSize: 9, fontWeight: 600, color: "var(--color-text-secondary)", textAlign: "center", lineHeight: 1.2 }}>
+          MCP 도구
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div
       style={{
         position: "absolute",
-        bottom: 80,
-        right: 20,
+        bottom: 16,
+        left: "50%",
+        transform: "translateX(-50%)",
         zIndex: 20,
-        background: "var(--color-bg-secondary)",
+        background: "rgba(var(--color-bg-secondary-rgb, 30,30,40), 0.96)",
+        backdropFilter: "blur(12px)",
         border: "1px solid var(--color-border)",
-        borderRadius: 14,
-        boxShadow: "0 12px 40px rgba(0,0,0,0.4)",
-        padding: "10px 10px",
+        borderRadius: 16,
+        boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+        padding: "10px 14px 12px",
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        width: 210,
+        gap: 10,
+        maxWidth: "calc(100vw - 120px)",
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 6, borderBottom: "1px solid var(--color-border)", marginBottom: 2 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          노드 추가
-        </span>
+      {/* Tab bar + close */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            background: "var(--color-bg-tertiary, rgba(255,255,255,0.06))",
+            borderRadius: 22,
+            padding: "2px 3px",
+            flex: 1,
+          }}
+        >
+          {TAB_BTN("general", "일반")}
+          {TAB_BTN("dev", "개발")}
+          {TAB_BTN("mcp", "MCP")}
+        </div>
         <div
           onClick={onClose}
           style={{
-            width: 22,
-            height: 22,
-            borderRadius: 6,
+            width: 26,
+            height: 26,
+            borderRadius: 8,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             color: "var(--color-text-secondary)",
+            flexShrink: 0,
+            marginLeft: 6,
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-hover)")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -760,45 +936,40 @@ function FloatingPalette({ open, onClose }: { open: boolean; onClose: () => void
         </div>
       </div>
 
-      {PALETTE_ITEMS.map((item) => (
-        <div
-          key={item.type}
-          draggable
-          onDragStart={(e) => { onDragStart(e, item.type); onClose(); }}
-          title={`${item.label} — ${item.desc}`}
-          style={{
-            borderRadius: 8,
-            background: item.color + "12",
-            border: "1px solid transparent",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            cursor: "grab",
-            transition: "all 0.12s",
-            padding: "7px 10px",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = item.color + "80";
-            (e.currentTarget as HTMLDivElement).style.background = item.color + "22";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "transparent";
-            (e.currentTarget as HTMLDivElement).style.background = item.color + "12";
-          }}
-        >
-          <span style={{ width: 26, height: 26, borderRadius: 7, background: item.color + "25", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {NODE_ICONS[item.iconKey]?.({ color: item.color, size: 14 })}
-          </span>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", lineHeight: 1.3 }}>
-              {item.label}
-            </div>
-            <div style={{ fontSize: 10, color: "var(--color-text-secondary)", lineHeight: 1.2 }}>
-              {item.desc}
-            </div>
-          </div>
-        </div>
-      ))}
+      {/* Tile row */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          gap: 8,
+          overflowX: "auto",
+          paddingBottom: 2,
+        }}
+      >
+        {activeItems
+          ? activeItems.map((item) => <PaletteTile key={item.type} item={item} />)
+          : tab === "mcp"
+          ? mcpLoading
+            ? (
+              <div style={{ padding: "14px 20px", fontSize: 12, color: "var(--color-text-secondary)" }}>
+                불러오는 중...
+              </div>
+            )
+            : (
+              <>
+                <GenericMcpTile />
+                {mcpServers.map((server) => (
+                  <McpTile key={server.name} server={server} />
+                ))}
+                {mcpServers.length === 0 && (
+                  <div style={{ padding: "14px 10px", fontSize: 12, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
+                    연결된 MCP 서버가 없습니다
+                  </div>
+                )}
+              </>
+            )
+          : null}
+      </div>
     </div>
   );
 }
@@ -1077,7 +1248,11 @@ function WorkflowEditorInner() {
       if (rawType.startsWith("agent:")) {
         const role = rawType.split(":")[1] as AgentRole;
         type = "agent";
-        data = { role, model: "claude", mcpTools: [] };
+        data = { role, model: "claude" };
+      } else if (rawType.startsWith("mcp:")) {
+        const parts = rawType.split(":");
+        type = "mcp";
+        data = { mcpName: parts[1] ?? "MCP 도구", mcpType: parts[2] ?? "unknown" };
       } else if (rawType === "trigger") {
         type = "trigger";
         data = { label: "트리거" };
@@ -1269,7 +1444,7 @@ function WorkflowEditorInner() {
             position: "absolute",
             bottom: 20,
             right: 20,
-            zIndex: 20,
+            zIndex: 21,
             width: 48,
             height: 48,
             borderRadius: "50%",
@@ -1284,16 +1459,13 @@ function WorkflowEditorInner() {
             alignItems: "center",
             justifyContent: "center",
             transition: "all 0.18s",
-            transform: showPalette ? "rotate(45deg)" : "none",
           }}
           onMouseEnter={(e) => {
-            if (!showPalette) {
-              e.currentTarget.style.transform = "scale(1.08)";
-              e.currentTarget.style.boxShadow = "0 6px 24px rgba(108,92,231,0.55)";
-            }
+            e.currentTarget.style.transform = "scale(1.08)";
+            e.currentTarget.style.boxShadow = "0 6px 24px rgba(108,92,231,0.55)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.transform = showPalette ? "rotate(45deg)" : "none";
+            e.currentTarget.style.transform = "none";
             e.currentTarget.style.boxShadow = showPalette
               ? "0 4px 20px rgba(108,92,231,0.6)"
               : "0 4px 16px rgba(108,92,231,0.4)";
