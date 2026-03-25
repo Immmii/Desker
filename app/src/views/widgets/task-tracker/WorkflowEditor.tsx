@@ -991,7 +991,15 @@ function WorkflowEditorInner() {
   const [isRunning, setIsRunning] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
+
+  // Fit view on initial load
+  useEffect(() => {
+    if (activeWorkflow !== null) {
+      setTimeout(() => fitView({ padding: 0.3 }), 200);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist on change
   useEffect(() => {
@@ -1024,6 +1032,8 @@ function WorkflowEditorInner() {
     setWorkflowName(name);
     setActiveWorkflow(template);
     saveWorkflow({ name, nodes: initNodes, edges: initEdges });
+    // Fit view after nodes render
+    setTimeout(() => fitView({ padding: 0.3 }), 100);
   };
 
   const onConnect = useCallback(
