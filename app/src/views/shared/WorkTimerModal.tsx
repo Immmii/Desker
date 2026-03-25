@@ -98,12 +98,26 @@ interface WorkTimerModalProps {
   onStatusChange?: (status: "in_progress" | "done") => void;
 }
 
+const TIMER_KEY = (id: string) => `desker:timer:${id}`;
+
+function loadSavedSeconds(taskId: string): number {
+  try {
+    const v = localStorage.getItem(TIMER_KEY(taskId));
+    return v ? Math.max(0, parseInt(v, 10) || 0) : 0;
+  } catch { return 0; }
+}
+
+function saveSeconds(taskId: string, s: number) {
+  localStorage.setItem(TIMER_KEY(taskId), String(s));
+}
+
 export default function WorkTimerModal({
+  taskId,
   taskTitle,
   onClose,
   onStatusChange,
 }: WorkTimerModalProps) {
-  const [seconds, setSeconds] = useState(0);
+  const [seconds, setSeconds] = useState(() => loadSavedSeconds(taskId));
   const [running, setRunning] = useState(false);
   const [catFrame, setCatFrame] = useState(0); // 0=idle, 1=work1, 2=work2
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -117,6 +131,11 @@ export default function WorkTimerModal({
   const timeStr = hrs > 0
     ? `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
     : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+
+  // Persist seconds to localStorage
+  useEffect(() => {
+    saveSeconds(taskId, seconds);
+  }, [taskId, seconds]);
 
   // Timer logic
   useEffect(() => {
@@ -286,7 +305,7 @@ export default function WorkTimerModal({
         {/* Reset */}
         {seconds > 0 && !running && (
           <button
-            onClick={() => setSeconds(0)}
+            onClick={() => { setSeconds(0); saveSeconds(taskId, 0); }}
             style={{
               fontSize: 12, color: "var(--color-text-secondary)", background: "none",
               border: "none", cursor: "pointer", opacity: 0.6,
