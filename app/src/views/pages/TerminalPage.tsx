@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   DndContext,
@@ -496,7 +496,11 @@ function Pane({
 
       {/* Terminal */}
       <div className="flex-1 min-h-0 bg-bg-primary">
-        {active && <SessionTerminal session={active} droppedFiles={droppedFiles} onFileDrop={handleFileDrop} onFileClear={handleClearFiles} onFileRemove={handleRemoveFile} />}
+        {active ? <SessionTerminal session={active} droppedFiles={droppedFiles} onFileDrop={handleFileDrop} onFileClear={handleClearFiles} onFileRemove={handleRemoveFile} /> : (
+          <div className="h-full flex items-center justify-center text-text-secondary" style={{ opacity: 0.5, fontSize: 13 }}>
+            세션 없음
+          </div>
+        )}
       </div>
 
       {/* Quick bar for AI */}
@@ -963,23 +967,48 @@ export default function TerminalPage() {
     }
   }, [panes, activeSessionId, setActiveSession]);
 
-  if (sessions.length === 0) return <EmptyTerminal />;
+  // Compute effective panes: sync panes with sessions at render time to avoid
+  // one-frame black screen when useEffect hasn't run yet
+  const effectivePanes = useMemo(() => {
+    if (sessions.length === 0) return [];
+    const currentIds = new Set(sessions.map((s) => s.id));
+    const assignedIds = new Set(panes.flatMap((p) => p.sessionIds));
+    const unassigned = sessions.filter((s) => !assignedIds.has(s.id)).map((s) => s.id);
 
-  const isSplit = panes.length > 1;
-  const canSplit = panes.length < MAX_PANES;
+    let result = panes.map((pane, i) => {
+      const filtered = pane.sessionIds.filter((id) => currentIds.has(id));
+      const withNew = i === 0 ? [...filtered, ...unassigned] : filtered;
+      const activeStillExists = pane.activeId && withNew.includes(pane.activeId);
+      return {
+        ...pane,
+        sessionIds: withNew,
+        activeId: activeStillExists ? pane.activeId : (withNew[0] ?? null),
+      };
+    });
+    result = result.filter((p) => p.sessionIds.length > 0);
+    if (result.length === 0 && sessions.length > 0) {
+      result = [createPane(sessions.map((s) => s.id), sessions[0].id)];
+    }
+    return result;
+  }, [panes, sessions]);
+
+  const isSplit = effectivePanes.length > 1;
+  const canSplit = effectivePanes.length < MAX_PANES;
 
   // Refit all terminals when pane count changes (split/unsplit)
-  const prevPaneCount = useRef(panes.length);
+  const prevPaneCount = useRef(effectivePanes.length);
   useEffect(() => {
-    if (prevPaneCount.current !== panes.length) {
-      prevPaneCount.current = panes.length;
+    if (prevPaneCount.current !== effectivePanes.length) {
+      prevPaneCount.current = effectivePanes.length;
       refitAllTerminals();
     }
-  }, [panes.length]);
+  }, [effectivePanes.length]);
+
+  if (sessions.length === 0) return <EmptyTerminal />;
 
   // Helper: find which pane a session belongs to
   const findPaneIndex = (sessionId: string): number =>
-    panes.findIndex((p) => p.sessionIds.includes(sessionId));
+    effectivePanes.findIndex((p) => p.sessionIds.includes(sessionId));
 
   // Helper: get TerminalSession objects for a pane
   const getPaneSessions = (pane: PaneState): TerminalSession[] =>
@@ -987,12 +1016,19 @@ export default function TerminalPage() {
 
   const handleNewSession = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
     const preset = agentRole ? getAgentPreset(agentRole) : null;
-    createSession({
+    const newId = createSession({
       taskId: "quick",
       taskTitle: preset ? `${preset.icon} ${preset.label}` : mode === "ai" ? `${aiModel === "claude" ? "Claude" : "ChatGPT"} 세션` : "터미널",
       projectName: "빠른 시작",
       projectIcon: "",
       mode, aiModel, agentRole, agentEnv,
+    });
+    // Immediately add to pane 0 so it renders without waiting for sync useEffect
+    setPanes((prev) => {
+      if (prev.length === 0) return [createPane([newId], newId)];
+      return prev.map((pane, i) =>
+        i === 0 ? { ...pane, sessionIds: [...pane.sessionIds, newId], activeId: newId } : pane
+      );
     });
     setShowNewSession(false);
   };
@@ -1003,24 +1039,7 @@ export default function TerminalPage() {
     } else {
       window.deskerAPI.pty.kill(id);
     }
-    // Remove from panes
-    setPanes((prev) => {
-      let updated = prev.map((pane) => {
-        const filtered = pane.sessionIds.filter((sid) => sid !== id);
-        const activeStillExists = pane.activeId !== id;
-        return {
-          ...pane,
-          sessionIds: filtered,
-          activeId: activeStillExists ? pane.activeId : (filtered[0] ?? null),
-        };
-      });
-      // Remove empty panes (keep at least one)
-      updated = updated.filter((p) => p.sessionIds.length > 0);
-      if (updated.length === 0) {
-        updated = [createPane([], null)];
-      }
-      return updated;
-    });
+    // Just remove from global store — effectivePanes handles pane cleanup automatically
     removeSession(id);
   };
 
@@ -1145,7 +1164,7 @@ export default function TerminalPage() {
         {activeSession && (
           <TerminalHeader
             session={activeSession}
-            paneCount={panes.length}
+            paneCount={effectivePanes.length}
             isSplit={isSplit}
             onNewSession={() => setShowNewSession(true)}
           />
@@ -1153,7 +1172,7 @@ export default function TerminalPage() {
 
         {/* Panes */}
         <div className="flex-1 min-h-0 flex">
-          {panes.map((pane, i) => (
+          {effectivePanes.map((pane, i) => (
             <Pane
               key={pane.id}
               paneSessions={getPaneSessions(pane)}
@@ -1169,7 +1188,7 @@ export default function TerminalPage() {
           {/* Drop zone for new split — hide if dragged tab is the only one in its pane (would just create an empty pane) */}
           {canSplit && (() => {
             if (!draggingSession) return <SplitDropZone isDragging={false} />;
-            const srcPane = panes.find((p) => p.sessionIds.includes(draggingSession.id));
+            const srcPane = effectivePanes.find((p) => p.sessionIds.includes(draggingSession.id));
             const srcHasMultiple = srcPane && srcPane.sessionIds.length > 1;
             return srcHasMultiple ? <SplitDropZone isDragging={true} /> : null;
           })()}

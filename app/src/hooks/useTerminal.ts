@@ -136,6 +136,9 @@ export function useTerminal(
     if (term) {
       if (term.element) {
         containerRef.current.appendChild(term.element);
+      } else {
+        // Terminal was created but never opened (container was hidden) — open now
+        term.open(containerRef.current);
       }
       const fit = new FitAddon();
       term.loadAddon(fit);
@@ -166,9 +169,7 @@ export function useTerminal(
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
     fitRef.current = fit;
-    fitAddonInstances.set(sessionId, fit);
 
     terminalInstances.set(sessionId, term);
 
@@ -192,20 +193,25 @@ export function useTerminal(
       spawnedRef.current = true;
       const api = window.deskerAPI;
 
-      // Wait until container has proper dimensions, then spawn
+      // Wait until container has proper dimensions, then open terminal and spawn
       const doSpawn = () => {
-        try { fit.fit(); } catch {}
-        const cols = term!.cols;
-        const rows = term!.rows;
-
-        // If container isn't ready yet (too narrow), retry
-        if (cols < 20 && containerRef.current) {
+        // Don't open terminal until container is visible and has dimensions
+        if (containerRef.current) {
           const w = containerRef.current.clientWidth;
           if (w < 100) {
             setTimeout(doSpawn, 100);
             return;
           }
+          // Open terminal only when container is ready
+          if (!term!.element) {
+            term!.open(containerRef.current);
+            fitAddonInstances.set(sessionId, fit);
+          }
         }
+
+        try { fit.fit(); } catch {}
+        const cols = term!.cols;
+        const rows = term!.rows;
 
       // Math detection helper
       const detectMath = (data: string) => {

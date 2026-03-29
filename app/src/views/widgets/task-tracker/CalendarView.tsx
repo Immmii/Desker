@@ -1,12 +1,566 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useProjectVM } from "../../../viewmodels/project.vm";
-import { useSessionVM } from "../../../viewmodels/session.vm";
-import { useAppVM } from "../../../viewmodels/app.vm";
-import type { Task, TaskStatus, TaskPriority } from "../../../types/models";
-import type { TerminalMode, AiModel, AgentRole, AgentEnvironment } from "../../../viewmodels/session.vm";
-import StartSessionModal from "../../shared/StartSessionModal";
+import type { Task, TaskStatus } from "../../../types/models";
 import TaskDetailModal from "../../shared/TaskDetailModal";
 
+// ─── Sticker Data Model ────────────────────────────────────────────────────
+interface CalendarSticker {
+  id: string;
+  dateStr: string;  // YYYY-MM-DD
+  stickerId: string; // built-in key or "custom:{dataUrl}"
+}
+
+const STICKER_STORAGE_KEY = "desker:calendar-stickers";
+const CUSTOM_STICKER_STORAGE_KEY = "desker:custom-stickers";
+
+function loadStickers(): CalendarSticker[] {
+  try {
+    const raw = localStorage.getItem(STICKER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStickers(stickers: CalendarSticker[]): void {
+  localStorage.setItem(STICKER_STORAGE_KEY, JSON.stringify(stickers));
+}
+
+function loadCustomStickers(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_STICKER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomStickers(dataUrls: string[]): void {
+  localStorage.setItem(CUSTOM_STICKER_STORAGE_KEY, JSON.stringify(dataUrls));
+}
+
+// ─── Built-in SVG Sticker Components ──────────────────────────────────────
+function StickerCat({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="16" cy="20" rx="10" ry="9" fill="#F4A460"/>
+      <ellipse cx="16" cy="20" rx="8" ry="7" fill="#FFDAB9"/>
+      {/* Ears */}
+      <polygon points="8,14 5,7 12,12" fill="#F4A460"/>
+      <polygon points="24,14 27,7 20,12" fill="#F4A460"/>
+      <polygon points="9,13 7,8 12,12" fill="#FFB6C1"/>
+      <polygon points="23,13 25,8 20,12" fill="#FFB6C1"/>
+      {/* Eyes */}
+      <ellipse cx="12.5" cy="19" rx="2" ry="2.5" fill="#3D2B1F"/>
+      <ellipse cx="19.5" cy="19" rx="2" ry="2.5" fill="#3D2B1F"/>
+      <circle cx="13.2" cy="18.3" r="0.7" fill="white"/>
+      <circle cx="20.2" cy="18.3" r="0.7" fill="white"/>
+      {/* Nose */}
+      <ellipse cx="16" cy="22" rx="1.2" ry="0.9" fill="#FF9999"/>
+      {/* Whiskers */}
+      <line x1="5" y1="21" x2="13" y2="22" stroke="#A0826D" strokeWidth="0.8"/>
+      <line x1="5" y1="23" x2="13" y2="23" stroke="#A0826D" strokeWidth="0.8"/>
+      <line x1="19" y1="22" x2="27" y2="21" stroke="#A0826D" strokeWidth="0.8"/>
+      <line x1="19" y1="23" x2="27" y2="23" stroke="#A0826D" strokeWidth="0.8"/>
+      {/* Mouth */}
+      <path d="M 14.5 23.5 Q 16 25 17.5 23.5" stroke="#A0826D" strokeWidth="0.8" fill="none"/>
+    </svg>
+  );
+}
+
+function StickerHeart({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 27 C16 27 4 19 4 11.5 C4 7.4 7.4 4 11.5 4 C13.6 4 15.5 5 16 6.2 C16.5 5 18.4 4 20.5 4 C24.6 4 28 7.4 28 11.5 C28 19 16 27 16 27Z" fill="#FF6B8A"/>
+      <path d="M16 25 C16 25 6 18 6 11.5 C6 8.5 8.5 6 11.5 6 C13.3 6 14.9 7 16 8.5 C17.1 7 18.7 6 20.5 6 C23.5 6 26 8.5 26 11.5 C26 18 16 25 16 25Z" fill="#FF9BB5"/>
+      <path d="M10 10 Q12 8 14 10" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.6"/>
+    </svg>
+  );
+}
+
+function StickerStar({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 3 L19.5 12.5 L29.5 12.5 L21.5 18.5 L24.5 28 L16 22.5 L7.5 28 L10.5 18.5 L2.5 12.5 L12.5 12.5 Z" fill="#FFD700"/>
+      <path d="M16 5.5 L19 13.5 L27.5 13.5 L20.5 18.5 L23 26 L16 21.5 L9 26 L11.5 18.5 L4.5 13.5 L13 13.5 Z" fill="#FFE44D"/>
+      {/* Sparkles */}
+      <circle cx="26" cy="6" r="1.5" fill="#FFD700"/>
+      <circle cx="6" cy="8" r="1" fill="#FFE44D"/>
+      <line x1="26" y1="3" x2="26" y2="9" stroke="#FFD700" strokeWidth="1" strokeLinecap="round"/>
+      <line x1="23" y1="6" x2="29" y2="6" stroke="#FFD700" strokeWidth="1" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function StickerFlower({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Petals */}
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FF9ED2" transform="rotate(0 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FFB8E0" transform="rotate(45 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FF9ED2" transform="rotate(90 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FFB8E0" transform="rotate(135 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FF9ED2" transform="rotate(180 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FFB8E0" transform="rotate(225 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FF9ED2" transform="rotate(270 16 16)"/>
+      <ellipse cx="16" cy="8" rx="4" ry="5" fill="#FFB8E0" transform="rotate(315 16 16)"/>
+      {/* Center */}
+      <circle cx="16" cy="16" r="5.5" fill="#FFE44D"/>
+      <circle cx="16" cy="16" r="4" fill="#FFD700"/>
+      <circle cx="14.5" cy="14.5" r="1" fill="#FFF0A0" opacity="0.8"/>
+    </svg>
+  );
+}
+
+function StickerCoffee({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Cup body */}
+      <path d="M7 14 L9 28 L23 28 L25 14 Z" fill="#8B5E3C"/>
+      <path d="M8 14 L10 27 L22 27 L24 14 Z" fill="#A0724A"/>
+      {/* Cup rim */}
+      <rect x="6" y="12" width="20" height="3" rx="1.5" fill="#6B4226"/>
+      {/* Handle */}
+      <path d="M25 17 Q31 17 31 22 Q31 27 25 27" stroke="#6B4226" strokeWidth="2" fill="none" strokeLinecap="round"/>
+      {/* Coffee surface */}
+      <ellipse cx="16" cy="13.5" rx="8" ry="2" fill="#5C3317"/>
+      {/* Cream swirl */}
+      <path d="M13 13 Q16 11 19 13 Q16 15 13 13Z" fill="#F5DEB3" opacity="0.7"/>
+      {/* Steam */}
+      <path d="M12 8 Q13 6 12 4" stroke="#B0B0B0" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.8"/>
+      <path d="M16 7 Q17 5 16 3" stroke="#B0B0B0" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.8"/>
+      <path d="M20 8 Q21 6 20 4" stroke="#B0B0B0" strokeWidth="1.5" fill="none" strokeLinecap="round" opacity="0.8"/>
+    </svg>
+  );
+}
+
+function StickerBook({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Book left */}
+      <path d="M4 6 L16 8 L16 26 L4 24 Z" fill="#5B9BD5"/>
+      <path d="M5 7 L15 9 L15 25 L5 23 Z" fill="#74AEDE"/>
+      {/* Book right */}
+      <path d="M28 6 L16 8 L16 26 L28 24 Z" fill="#4A90C4"/>
+      <path d="M27 7 L17 9 L17 25 L27 23 Z" fill="#5BA3D3"/>
+      {/* Spine */}
+      <rect x="15" y="7" width="2" height="19" fill="#2C6FA0"/>
+      {/* Lines on left page */}
+      <line x1="7" y1="13" x2="14" y2="13.5" stroke="white" strokeWidth="1" opacity="0.5"/>
+      <line x1="7" y1="16" x2="14" y2="16.5" stroke="white" strokeWidth="1" opacity="0.5"/>
+      <line x1="7" y1="19" x2="14" y2="19.5" stroke="white" strokeWidth="1" opacity="0.5"/>
+      {/* Lines on right page */}
+      <line x1="18" y1="13.5" x2="25" y2="13" stroke="white" strokeWidth="1" opacity="0.5"/>
+      <line x1="18" y1="16.5" x2="25" y2="16" stroke="white" strokeWidth="1" opacity="0.5"/>
+      <line x1="18" y1="19.5" x2="25" y2="19" stroke="white" strokeWidth="1" opacity="0.5"/>
+    </svg>
+  );
+}
+
+function StickerFire({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M16 29 C10 29 6 24 6 19 C6 14 10 11 10 11 C10 14 12 15 12 15 C12 12 14 8 16 4 C16 4 20 9 20 13 C20 13 22 12 22 9 C22 9 26 13 26 19 C26 24 22 29 16 29Z" fill="#FF6B1A"/>
+      <path d="M16 27 C11.5 27 8 23 8 19 C8 15.5 10.5 13 10.5 13 C10.5 15 12 16 12 16 C12.5 13 14 10 16 7 C18 10 19.5 13 19.5 15 C21 14 21.5 12 21.5 12 C24 15 24 17 24 19 C24 23 20.5 27 16 27Z" fill="#FF9A3C"/>
+      <path d="M16 25 C13 25 10.5 22.5 10.5 19.5 C10.5 17 12 15.5 12 15.5 C12 17 13.5 18 13.5 18 C14 16 15 14.5 16 13 C17 14.5 18 16.5 18 18.5 C18 18.5 19.5 17.5 20 15.5 C21.5 17 21.5 18.5 21.5 19.5 C21.5 22.5 19 25 16 25Z" fill="#FFD700"/>
+    </svg>
+  );
+}
+
+function StickerMoon({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 16 C24 21.5 19.5 26 14 26 C9.5 26 5.8 23 4.5 19 C6 20 8 20.5 10 20 C15 18.8 18.8 14 19.5 9 C20 7 20 5.5 19.5 4 C22.3 6.5 24 11 24 16Z" fill="#A78BFA"/>
+      <path d="M22.5 16 C22.5 20.7 19 24.5 14.5 24.5 C11 24.5 8 22.5 6.5 19.5 C7.8 20 9.5 20 11 19.5 C15.5 18 18.8 13.5 19.5 9 C19.8 7.5 19.8 6 19.5 4.5 C21.6 6.8 22.5 11.2 22.5 16Z" fill="#C4B5FD"/>
+      {/* Stars */}
+      <circle cx="27" cy="8" r="1.5" fill="#FFE44D"/>
+      <circle cx="24" cy="4" r="1" fill="#FFE44D"/>
+      <circle cx="6" cy="9" r="1" fill="#FFE44D"/>
+      <line x1="27" y1="5.5" x2="27" y2="10.5" stroke="#FFE44D" strokeWidth="0.8" strokeLinecap="round"/>
+      <line x1="24.5" y1="8" x2="29.5" y2="8" stroke="#FFE44D" strokeWidth="0.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function StickerSun({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Rays */}
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+        <line
+          key={i}
+          x1={16 + 9 * Math.cos((angle * Math.PI) / 180)}
+          y1={16 + 9 * Math.sin((angle * Math.PI) / 180)}
+          x2={16 + 13 * Math.cos((angle * Math.PI) / 180)}
+          y2={16 + 13 * Math.sin((angle * Math.PI) / 180)}
+          stroke="#FFD700"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      ))}
+      {/* Sun body */}
+      <circle cx="16" cy="16" r="8" fill="#FFD700"/>
+      <circle cx="16" cy="16" r="6.5" fill="#FFE44D"/>
+      {/* Face */}
+      <circle cx="13.5" cy="15" r="1.2" fill="#F4A400"/>
+      <circle cx="18.5" cy="15" r="1.2" fill="#F4A400"/>
+      <path d="M13 18.5 Q16 21 19 18.5" stroke="#F4A400" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function StickerRainbow({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Rainbow arcs */}
+      <path d="M4 24 C4 13 12 5 16 5 C20 5 28 13 28 24" stroke="#FF6B6B" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M6 24 C6 14 12.5 7 16 7 C19.5 7 26 14 26 24" stroke="#FF9F43" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M8 24 C8 15 13 9 16 9 C19 9 24 15 24 24" stroke="#FFD700" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M10 24 C10 16 13.5 11 16 11 C18.5 11 22 16 22 24" stroke="#6BCB77" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M12 24 C12 17 14 13 16 13 C18 13 20 17 20 24" stroke="#4ECDC4" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M14 24 C14 18 15 15 16 15 C17 15 18 18 18 24" stroke="#A78BFA" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      {/* Clouds */}
+      <ellipse cx="5.5" cy="24" rx="3.5" ry="3" fill="white"/>
+      <ellipse cx="26.5" cy="24" rx="3.5" ry="3" fill="white"/>
+      <ellipse cx="4" cy="23" rx="2.5" ry="2.5" fill="white"/>
+      <ellipse cx="28" cy="23" rx="2.5" ry="2.5" fill="white"/>
+    </svg>
+  );
+}
+
+function StickerClover({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* 4 leaf petals */}
+      <circle cx="16" cy="10" r="5.5" fill="#4CAF50"/>
+      <circle cx="22" cy="16" r="5.5" fill="#4CAF50"/>
+      <circle cx="16" cy="22" r="5.5" fill="#4CAF50"/>
+      <circle cx="10" cy="16" r="5.5" fill="#4CAF50"/>
+      {/* Inner lighter circles */}
+      <circle cx="16" cy="10" r="4" fill="#66BB6A"/>
+      <circle cx="22" cy="16" r="4" fill="#66BB6A"/>
+      <circle cx="16" cy="22" r="4" fill="#66BB6A"/>
+      <circle cx="10" cy="16" r="4" fill="#66BB6A"/>
+      {/* Center */}
+      <circle cx="16" cy="16" r="4" fill="#388E3C"/>
+      {/* Vein lines */}
+      <line x1="16" y1="16" x2="16" y2="6" stroke="#2E7D32" strokeWidth="1" opacity="0.5"/>
+      <line x1="16" y1="16" x2="26" y2="16" stroke="#2E7D32" strokeWidth="1" opacity="0.5"/>
+      <line x1="16" y1="16" x2="16" y2="26" stroke="#2E7D32" strokeWidth="1" opacity="0.5"/>
+      <line x1="16" y1="16" x2="6" y2="16" stroke="#2E7D32" strokeWidth="1" opacity="0.5"/>
+      {/* Stem */}
+      <path d="M16 26 Q16 30 14 31" stroke="#388E3C" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function StickerCake({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Cake base */}
+      <rect x="5" y="20" width="22" height="9" rx="2" fill="#FF9ED2"/>
+      <rect x="5" y="20" width="22" height="9" rx="2" fill="#FFB8E0"/>
+      {/* Middle layer */}
+      <rect x="7" y="14" width="18" height="7" rx="1.5" fill="#A78BFA"/>
+      <rect x="7" y="14" width="18" height="7" rx="1.5" fill="#C4B5FD"/>
+      {/* Top layer */}
+      <rect x="9" y="9" width="14" height="6" rx="1.5" fill="#FFD700"/>
+      <rect x="9" y="9" width="14" height="6" rx="1.5" fill="#FFE44D"/>
+      {/* Frosting drips */}
+      <path d="M5 22 Q7 19 9 22 Q11 19 13 22 Q15 19 17 22 Q19 19 21 22 Q23 19 25 22 Q27 19 27 22" stroke="white" strokeWidth="2" fill="none"/>
+      <path d="M7 16 Q9 13 11 16 Q13 13 15 16 Q17 13 19 16 Q21 13 23 16" stroke="white" strokeWidth="1.5" fill="none"/>
+      {/* Candle */}
+      <rect x="14.5" y="5" width="3" height="5" rx="1" fill="#FF6B8A"/>
+      {/* Flame */}
+      <path d="M16 5 C15 3.5 14 3 15 1.5 C15.5 2.5 16.5 2 17 1 C17.5 2.5 17.5 3.5 16 5Z" fill="#FFD700"/>
+      <path d="M16 5 C15.2 4 15 3.5 15.5 2 C16 3 16.5 3 17 2 C17.5 3 17 4 16 5Z" fill="#FF9A3C"/>
+    </svg>
+  );
+}
+
+// Sticker registry
+interface StickerDef {
+  id: string;
+  label: string;
+  Component: React.FC<{ size?: number }>;
+}
+
+const BUILT_IN_STICKERS: StickerDef[] = [
+  { id: "cat", label: "고양이", Component: StickerCat },
+  { id: "heart", label: "하트", Component: StickerHeart },
+  { id: "star", label: "별", Component: StickerStar },
+  { id: "flower", label: "꽃", Component: StickerFlower },
+  { id: "coffee", label: "커피", Component: StickerCoffee },
+  { id: "book", label: "책", Component: StickerBook },
+  { id: "fire", label: "불꽃", Component: StickerFire },
+  { id: "moon", label: "달", Component: StickerMoon },
+  { id: "sun", label: "해", Component: StickerSun },
+  { id: "rainbow", label: "무지개", Component: StickerRainbow },
+  { id: "clover", label: "클로버", Component: StickerClover },
+  { id: "cake", label: "케이크", Component: StickerCake },
+];
+
+function StickerDisplay({ stickerId, size = 22 }: { stickerId: string; size?: number }) {
+  if (stickerId.startsWith("custom:")) {
+    const dataUrl = stickerId.slice(7);
+    return <img src={dataUrl} width={size} height={size} style={{ objectFit: "contain", borderRadius: 4 }} />;
+  }
+  const def = BUILT_IN_STICKERS.find((s) => s.id === stickerId);
+  if (!def) return null;
+  return <def.Component size={size} />;
+}
+
+// ─── Sticker Picker Popover ────────────────────────────────────────────────
+function StickerPicker({
+  dateStr,
+  anchorRect,
+  placed,
+  customStickers,
+  onPlace,
+  onRemove,
+  onUpload,
+  onClose,
+}: {
+  dateStr: string;
+  anchorRect: { top: number; left: number; bottom: number; right: number };
+  placed: CalendarSticker[];
+  customStickers: string[];
+  onPlace: (stickerId: string) => void;
+  onRemove: (id: string) => void;
+  onUpload: (dataUrl: string) => void;
+  onClose: () => void;
+}) {
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      onUpload(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const pickerWidth = 224;
+  let top = anchorRect.bottom + 6;
+  let left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - pickerWidth - 8));
+  if (top + 340 > window.innerHeight) {
+    top = Math.max(8, anchorRect.top - 340);
+  }
+
+  // dateStr is displayed directly in the header
+
+  return (
+    <div
+      ref={pickerRef}
+      style={{
+        position: "fixed",
+        zIndex: 70,
+        top,
+        left,
+        width: pickerWidth,
+        background: "var(--color-bg-secondary)",
+        border: "1px solid var(--color-border)",
+        borderRadius: 14,
+        boxShadow: "0 16px 48px rgba(0,0,0,0.28)",
+        padding: 14,
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)" }}>
+          {dateStr.replace(/-/g, ".")} 스티커
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            fontSize: 16, color: "var(--color-text-secondary)", lineHeight: 1, padding: 2,
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Already placed stickers */}
+      {placed.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 6, fontWeight: 500, letterSpacing: "0.03em" }}>
+            붙어있는 스티커
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {placed.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  position: "relative",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  background: "var(--color-bg-primary)",
+                  border: "1px solid var(--color-border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <StickerDisplay stickerId={s.stickerId} size={22} />
+                <button
+                  onClick={() => onRemove(s.id)}
+                  style={{
+                    position: "absolute", top: -6, right: -6,
+                    width: 16, height: 16, borderRadius: "50%",
+                    background: "#ff4757", border: "none", cursor: "pointer",
+                    fontSize: 10, color: "white", display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    fontWeight: 700, lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Built-in sticker grid */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 6, fontWeight: 500, letterSpacing: "0.03em" }}>
+          기본 스티커
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+          {BUILT_IN_STICKERS.map((s) => (
+            <button
+              key={s.id}
+              title={s.label}
+              onClick={() => onPlace(s.id)}
+              style={{
+                background: "var(--color-bg-primary)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 8,
+                padding: 6,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.12s",
+                height: 44,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-bg-hover)";
+                e.currentTarget.style.borderColor = "var(--color-accent)";
+                e.currentTarget.style.transform = "scale(1.08)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--color-bg-primary)";
+                e.currentTarget.style.borderColor = "var(--color-border)";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <s.Component size={26} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom stickers */}
+      {customStickers.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 10, color: "var(--color-text-secondary)", marginBottom: 6, fontWeight: 500, letterSpacing: "0.03em" }}>
+            내 스티커
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+            {customStickers.map((dataUrl, i) => (
+              <button
+                key={i}
+                onClick={() => onPlace(`custom:${dataUrl}`)}
+                style={{
+                  background: "var(--color-bg-primary)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: 8,
+                  padding: 4,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: 44,
+                  transition: "all 0.12s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-accent)";
+                  e.currentTarget.style.transform = "scale(1.08)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-border)";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+              >
+                <img src={dataUrl} width={28} height={28} style={{ objectFit: "contain", borderRadius: 4 }} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        style={{
+          width: "100%",
+          padding: "8px 12px",
+          borderRadius: 8,
+          border: "1.5px dashed var(--color-border)",
+          background: "transparent",
+          cursor: "pointer",
+          fontSize: 11,
+          color: "var(--color-text-secondary)",
+          fontFamily: "Pretendard, sans-serif",
+          transition: "all 0.12s",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-accent)";
+          e.currentTarget.style.color = "var(--color-accent)";
+          e.currentTarget.style.background = "var(--color-accent)/5";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-border)";
+          e.currentTarget.style.color = "var(--color-text-secondary)";
+          e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <span style={{ fontSize: 14 }}>＋</span> 사진 업로드
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+}
+
+// ─── Existing helpers ──────────────────────────────────────────────────────
 const STATUS_COLOR: Record<TaskStatus, string> = {
   todo: "#9090a8",
   in_progress: "#74b9ff",
@@ -25,307 +579,21 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   done: "완료",
 };
 
-const PRI_LABEL: Record<string, string> = { high: "🔴 높음", medium: "🟡 보통", low: "🟢 낮음" };
-
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-
-const popupInputStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  borderRadius: 8,
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg-primary)",
-  color: "var(--color-text-primary)",
-  fontSize: 13,
-  fontFamily: "Pretendard, sans-serif",
-  width: "100%",
-  outline: "none",
-};
-
-const popupLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 500,
-  color: "var(--color-text-secondary)",
-  marginBottom: 3,
-  display: "block",
-};
-
-function CalendarTaskEditForm({ task, onClose }: { task: Task; onClose: () => void }) {
-  const { projects, updateTask } = useProjectVM();
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
-  const [priority, setPriority] = useState<TaskPriority>(task.priority);
-  const [dueDate, setDueDate] = useState(task.dueDate ?? "");
-  const [status, setStatus] = useState<TaskStatus>(task.status);
-  const [projectId, setProjectId] = useState(task.projectId);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    updateTask(task.id, {
-      projectId,
-      title: title.trim(),
-      description: description.trim(),
-      status,
-      priority,
-      dueDate: dueDate || null,
-    });
-    onClose();
-  };
-
-  return (
-    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div>
-        <label style={popupLabelStyle}>제목 *</label>
-        <input style={popupInputStyle} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      </div>
-      <div>
-        <label style={popupLabelStyle}>설명</label>
-        <input style={popupInputStyle} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label style={popupLabelStyle}>우선순위</label>
-          <select style={popupInputStyle} value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
-            <option value="high">🔴 높음</option>
-            <option value="medium">🟡 보통</option>
-            <option value="low">🟢 낮음</option>
-          </select>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={popupLabelStyle}>상태</label>
-          <select style={popupInputStyle} value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-            <option value="todo">할 일</option>
-            <option value="in_progress">진행 중</option>
-            <option value="done">완료</option>
-          </select>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label style={popupLabelStyle}>마감일</label>
-          <input style={popupInputStyle} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label style={popupLabelStyle}>프로젝트</label>
-          <select style={popupInputStyle} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.icon} {p.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
-        <button
-          type="button" onClick={onClose}
-          style={{
-            padding: "5px 14px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-            border: "1px solid var(--color-border)", background: "transparent",
-            color: "var(--color-text-secondary)", fontFamily: "Pretendard, sans-serif",
-          }}
-        >
-          취소
-        </button>
-        <button
-          type="submit"
-          style={{
-            padding: "5px 14px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-            border: "none", background: "var(--color-accent)", color: "#fff",
-            fontWeight: 600, fontFamily: "Pretendard, sans-serif",
-            opacity: title.trim() ? 1 : 0.5,
-          }}
-          disabled={!title.trim()}
-        >
-          저장
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function TaskPopup({
-  task,
-  anchorRect,
-  onClose,
-}: {
-  task: Task;
-  anchorRect: { top: number; left: number; bottom: number; right: number };
-  onClose: () => void;
-}) {
-  const { projects, removeTask, updateTaskStatus } = useProjectVM();
-  const createSession = useSessionVM((s) => s.createSession);
-  const setPage = useAppVM((s) => s.setCurrentPage);
-  const project = projects.find((p) => p.id === task.projectId);
-  const popupRef = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const [showStartModal, setShowStartModal] = useState(false);
-
-  const handleStart = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
-    if (task.status === "todo") updateTaskStatus(task.id, "in_progress");
-    createSession({
-      taskId: task.id,
-      taskTitle: task.title,
-      projectName: project?.name ?? "프로젝트",
-      projectIcon: project?.icon ?? "📁",
-      mode,
-      aiModel,
-      agentRole,
-      agentEnv,
-    });
-    setPage("terminal");
-    setShowStartModal(false);
-    onClose();
-  };
-
-  // Position popup: try below the anchor, or above if not enough space
-  const popupWidth = 300;
-  const popupStyle: React.CSSProperties = {
-    position: "fixed",
-    zIndex: 60,
-    width: popupWidth,
-    padding: 16,
-    borderRadius: 12,
-    border: "1px solid var(--color-border)",
-    background: "var(--color-bg-secondary)",
-    boxShadow: "0 12px 36px rgba(0,0,0,0.35)",
-    top: anchorRect.bottom + 4,
-    left: Math.max(8, Math.min(anchorRect.left, window.innerWidth - popupWidth - 8)),
-  };
-
-  // If popup would go below viewport, show above
-  if (anchorRect.bottom + 280 > window.innerHeight) {
-    popupStyle.top = undefined;
-    popupStyle.bottom = window.innerHeight - anchorRect.top + 4;
-  }
-
-  return (
-    <div ref={popupRef} style={popupStyle}>
-      {editing ? (
-        <CalendarTaskEditForm task={task} onClose={() => setEditing(false)} />
-      ) : (
-        <>
-          {/* Title */}
-          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: "var(--color-text-primary)" }}>
-            {task.title}
-          </div>
-
-          {/* Description */}
-          {task.description && (
-            <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 10 }}>
-              {task.description}
-            </div>
-          )}
-
-          {/* Details */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--color-text-secondary)", width: 60 }}>상태</span>
-              <span
-                style={{
-                  fontSize: 12,
-                  padding: "2px 10px",
-                  borderRadius: 10,
-                  color: STATUS_COLOR[task.status],
-                  background: STATUS_BG[task.status],
-                  fontWeight: 500,
-                }}
-              >
-                {STATUS_LABEL[task.status]}
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--color-text-secondary)", width: 60 }}>우선순위</span>
-              <span style={{ fontSize: 12, color: "var(--color-text-primary)" }}>{PRI_LABEL[task.priority]}</span>
-            </div>
-            {task.dueDate && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--color-text-secondary)", width: 60 }}>마감일</span>
-                <span style={{ fontSize: 12, color: "var(--color-text-primary)" }}>{task.dueDate}</span>
-              </div>
-            )}
-            {project && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--color-text-secondary)", width: 60 }}>프로젝트</span>
-                <span style={{ fontSize: 12, color: "var(--color-text-primary)" }}>{project.icon} {project.name}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => setShowStartModal(true)}
-              style={{
-                padding: "6px 14px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                border: "none", background: "var(--color-accent)", color: "#fff",
-                fontWeight: 600, fontFamily: "Pretendard, sans-serif",
-              }}
-            >
-              ▶ 시작
-            </button>
-            {showStartModal && (
-              <StartSessionModal
-                taskTitle={task.title}
-                onStart={handleStart}
-                onClose={() => setShowStartModal(false)}
-              />
-            )}
-            <button
-              onClick={() => setEditing(true)}
-              style={{
-                padding: "6px 14px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                border: "1px solid var(--color-border)", background: "transparent",
-                color: "var(--color-text-primary)", fontFamily: "Pretendard, sans-serif",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              편집
-            </button>
-            <button
-              onClick={() => { removeTask(task.id); onClose(); }}
-              style={{
-                padding: "6px 14px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                border: "1px solid var(--color-border)", background: "transparent",
-                color: "var(--color-danger, #e17055)", fontFamily: "Pretendard, sans-serif",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-bg-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            >
-              삭제
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 type CalendarMode = "monthly" | "weekly";
 
 const WEEK_DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
 
-/** Get Monday of the week containing the given date */
 function getMonday(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day; // Sunday → go back 6, else go to Monday
+  const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-/** Format date string as YYYY-MM-DD for comparison */
 function toDateStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -333,7 +601,6 @@ function toDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Check if a task falls on a given date (by dueDate or startDate~dueDate range) */
 function taskFallsOnDate(task: Task, dateStr: string): boolean {
   if (task.startDate && task.dueDate) {
     return dateStr >= task.startDate && dateStr <= task.dueDate;
@@ -343,11 +610,64 @@ function taskFallsOnDate(task: Task, dateStr: string): boolean {
   return false;
 }
 
+// ─── Main CalendarView ─────────────────────────────────────────────────────
 export default function CalendarView() {
   const { tasks, selectedProjectId } = useProjectVM();
   const [viewDate, setViewDate] = useState(new Date());
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("monthly");
+
+  // Sticker state
+  const [stickers, setStickers] = useState<CalendarSticker[]>(loadStickers);
+  const [customStickers, setCustomStickers] = useState<string[]>(loadCustomStickers);
+  const [stickerPicker, setStickerPicker] = useState<{
+    dateStr: string;
+    anchorRect: { top: number; left: number; bottom: number; right: number };
+  } | null>(null);
+
+  const handlePlaceSticker = useCallback((stickerId: string) => {
+    if (!stickerPicker) return;
+    const newSticker: CalendarSticker = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      dateStr: stickerPicker.dateStr,
+      stickerId,
+    };
+    const updated = [...stickers, newSticker];
+    setStickers(updated);
+    saveStickers(updated);
+  }, [stickerPicker, stickers]);
+
+  const handleRemoveSticker = useCallback((id: string) => {
+    const updated = stickers.filter((s) => s.id !== id);
+    setStickers(updated);
+    saveStickers(updated);
+  }, [stickers]);
+
+  const handleUploadCustomSticker = useCallback((dataUrl: string) => {
+    const updated = [...customStickers, dataUrl];
+    setCustomStickers(updated);
+    saveCustomStickers(updated);
+    // Immediately place the uploaded sticker
+    if (stickerPicker) {
+      const newSticker: CalendarSticker = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        dateStr: stickerPicker.dateStr,
+        stickerId: `custom:${dataUrl}`,
+      };
+      const updatedStickers = [...stickers, newSticker];
+      setStickers(updatedStickers);
+      saveStickers(updatedStickers);
+    }
+  }, [customStickers, stickerPicker, stickers]);
+
+  const handleCellStickerClick = (e: React.MouseEvent, dateStr: string) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setStickerPicker({
+      dateStr,
+      anchorRect: { top: rect.top, left: rect.left, bottom: rect.bottom, right: rect.right },
+    });
+  };
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -359,7 +679,6 @@ export default function CalendarView() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Build calendar grid (monthly)
   const cells: (number | null)[] = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
@@ -369,7 +688,6 @@ export default function CalendarView() {
     ? tasks.filter((t) => t.projectId === selectedProjectId)
     : tasks;
 
-  // Map tasks to dates (monthly)
   const tasksByDate = new Map<number, typeof filteredTasks>();
   for (const task of filteredTasks) {
     if (!task.dueDate) continue;
@@ -381,7 +699,6 @@ export default function CalendarView() {
     }
   }
 
-  // Weekly view helpers
   const weekMonday = getMonday(viewDate);
   const weekDays: Date[] = [];
   for (let i = 0; i < 7; i++) {
@@ -390,7 +707,6 @@ export default function CalendarView() {
     weekDays.push(d);
   }
 
-  // Map tasks to week dates
   const tasksByWeekDate = new Map<string, Task[]>();
   for (const day of weekDays) {
     const ds = toDateStr(day);
@@ -398,19 +714,10 @@ export default function CalendarView() {
     if (dayTasks.length > 0) tasksByWeekDate.set(ds, dayTasks);
   }
 
-  // Navigation
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
-  const prevWeek = () => {
-    const d = new Date(viewDate);
-    d.setDate(d.getDate() - 7);
-    setViewDate(d);
-  };
-  const nextWeek = () => {
-    const d = new Date(viewDate);
-    d.setDate(d.getDate() + 7);
-    setViewDate(d);
-  };
+  const prevWeek = () => { const d = new Date(viewDate); d.setDate(d.getDate() - 7); setViewDate(d); };
+  const nextWeek = () => { const d = new Date(viewDate); d.setDate(d.getDate() + 7); setViewDate(d); };
   const goToday = () => setViewDate(new Date());
 
   const handleTaskClick = (e: React.MouseEvent, task: Task) => {
@@ -418,7 +725,6 @@ export default function CalendarView() {
     setDetailTaskId(task.id);
   };
 
-  // Week header label
   const weekStartStr = `${weekDays[0].getMonth() + 1}.${weekDays[0].getDate()}`;
   const weekEndStr = `${weekDays[6].getMonth() + 1}.${weekDays[6].getDate()}`;
 
@@ -468,23 +774,9 @@ export default function CalendarView() {
           </button>
         </div>
 
-        {/* View mode toggle */}
-        <div
-          style={{
-            display: "flex",
-            gap: 2,
-            padding: 2,
-            borderRadius: 8,
-            background: "var(--color-bg-secondary)",
-            border: "1px solid var(--color-border)",
-          }}
-        >
-          <button onClick={() => setCalendarMode("monthly")} style={modeToggleStyle(calendarMode === "monthly")}>
-            월간
-          </button>
-          <button onClick={() => setCalendarMode("weekly")} style={modeToggleStyle(calendarMode === "weekly")}>
-            주간
-          </button>
+        <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 8, background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}>
+          <button onClick={() => setCalendarMode("monthly")} style={modeToggleStyle(calendarMode === "monthly")}>월간</button>
+          <button onClick={() => setCalendarMode("weekly")} style={modeToggleStyle(calendarMode === "weekly")}>주간</button>
         </div>
 
         {/* Legend */}
@@ -507,11 +799,11 @@ export default function CalendarView() {
       {calendarMode === "monthly" ? (
         <>
           {/* Day headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: "2px solid var(--color-border)", marginBottom: 2 }}>
             {DAY_LABELS.map((d, i) => (
               <div
                 key={d}
-                style={{ fontSize: 12, fontWeight: 600, padding: "6px 8px", textAlign: "center" }}
+                style={{ fontSize: 11, fontWeight: 700, padding: "6px 8px", textAlign: "center", letterSpacing: "0.05em" }}
                 className={i === 0 ? "text-danger" : i === 6 ? "text-pixel-blue" : "text-text-secondary"}
               >
                 {d}
@@ -531,49 +823,115 @@ export default function CalendarView() {
             {cells.map((day, i) => {
               const dayTasks = day ? tasksByDate.get(day) || [] : [];
               const colIdx = i % 7;
+              const dayDateStr = day ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+              const dayStickers = dayDateStr ? stickers.filter((s) => s.dateStr === dayDateStr) : [];
+              const showStickers = dayStickers.slice(0, 3);
+              const extraStickers = dayStickers.length - 3;
 
               return (
                 <div
                   key={i}
                   style={{
                     borderTop: "1px solid var(--color-border)",
-                    borderRight: colIdx < 6 ? "1px solid rgba(46,46,66,0.2)" : "none",
-                    padding: "4px 6px",
+                    borderRight: colIdx < 6 ? "1px solid var(--color-border)" : "none",
+                    padding: "5px 6px 4px",
                     minHeight: 0,
                     overflow: "hidden",
+                    position: "relative",
+                    transition: "background 0.1s",
+                    cursor: day ? "default" : "default",
                   }}
                   className={isToday(day ?? 0) ? "bg-accent/5" : ""}
+                  onMouseEnter={(e) => {
+                    if (day) e.currentTarget.style.background = "var(--color-bg-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "";
+                  }}
                 >
                   {day && (
                     <>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: isToday(day) ? 700 : 400,
-                          marginBottom: 2,
-                          width: isToday(day) ? 24 : "auto",
-                          height: isToday(day) ? 24 : "auto",
-                          borderRadius: isToday(day) ? "50%" : 0,
-                          display: isToday(day) ? "flex" : "block",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: isToday(day) ? "var(--color-accent)" : "transparent",
-                          color: isToday(day) ? "white" : colIdx === 0 ? "var(--color-danger)" : colIdx === 6 ? "var(--color-pixel-blue)" : "var(--color-text-primary)",
-                        }}
-                      >
-                        {day}
+                      {/* Date number row */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: isToday(day) ? 700 : 400,
+                            width: isToday(day) ? 22 : "auto",
+                            height: isToday(day) ? 22 : "auto",
+                            borderRadius: isToday(day) ? "50%" : 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: isToday(day) ? "var(--color-accent)" : "transparent",
+                            color: isToday(day) ? "white" : colIdx === 0 ? "var(--color-danger)" : colIdx === 6 ? "var(--color-pixel-blue)" : "var(--color-text-primary)",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {day}
+                        </div>
+
+                        {/* Sticker strip + add button */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          {showStickers.map((s) => (
+                            <span key={s.id} style={{ lineHeight: 1, display: "inline-flex" }}>
+                              <StickerDisplay stickerId={s.stickerId} size={18} />
+                            </span>
+                          ))}
+                          {extraStickers > 0 && (
+                            <span style={{ fontSize: 9, color: "var(--color-text-secondary)", fontWeight: 600, marginLeft: 1 }}>
+                              +{extraStickers}
+                            </span>
+                          )}
+                          {/* Sticker add button */}
+                          <button
+                            onClick={(e) => handleCellStickerClick(e, dayDateStr)}
+                            title="스티커 추가"
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 4,
+                              border: "1px dashed var(--color-border)",
+                              background: "transparent",
+                              cursor: "pointer",
+                              fontSize: 10,
+                              color: "var(--color-text-secondary)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              marginLeft: 2,
+                              opacity: 0,
+                              transition: "opacity 0.12s",
+                              flexShrink: 0,
+                            }}
+                            className="sticker-add-btn"
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.opacity = "1";
+                              e.currentTarget.style.borderColor = "var(--color-accent)";
+                              e.currentTarget.style.color = "var(--color-accent)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.opacity = "0";
+                              e.currentTarget.style.borderColor = "var(--color-border)";
+                              e.currentTarget.style.color = "var(--color-text-secondary)";
+                            }}
+                          >
+                            ＋
+                          </button>
+                        </div>
                       </div>
 
+                      {/* Task list */}
                       {dayTasks.slice(0, 3).map((task) => (
                         <div
                           key={task.id}
                           onClick={(e) => handleTaskClick(e, task)}
                           style={{
                             fontSize: 10,
-                            padding: "2px 6px",
+                            padding: "2px 5px",
                             borderRadius: 4,
                             marginBottom: 2,
-                            borderLeft: `3px solid ${STATUS_COLOR[task.status]}`,
+                            borderLeft: `2px solid ${STATUS_COLOR[task.status]}`,
                             background: STATUS_BG[task.status],
                             whiteSpace: "nowrap",
                             overflow: "hidden",
@@ -588,7 +946,7 @@ export default function CalendarView() {
                         </div>
                       ))}
                       {dayTasks.length > 3 && (
-                        <div style={{ fontSize: 10, paddingLeft: 6 }} className="text-text-secondary">
+                        <div style={{ fontSize: 9, paddingLeft: 5, color: "var(--color-text-secondary)", opacity: 0.7 }}>
                           +{dayTasks.length - 3}개
                         </div>
                       )}
@@ -602,12 +960,10 @@ export default function CalendarView() {
       ) : (
         /* ── Weekly View ── */
         <>
-          {/* Week day headers */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 0 }}>
             {weekDays.map((day, i) => {
               const ds = toDateStr(day);
               const isTodayCol = ds === todayStr;
-              // Saturday = index 5 (토), Sunday = index 6 (일)
               const isSunday = i === 6;
               const isSaturday = i === 5;
               return (
@@ -620,34 +976,10 @@ export default function CalendarView() {
                     borderBottomColor: isTodayCol ? "var(--color-accent)" : "var(--color-border)",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: isSunday
-                        ? "var(--color-danger)"
-                        : isSaturday
-                          ? "var(--color-pixel-blue)"
-                          : "var(--color-text-secondary)",
-                      marginBottom: 2,
-                    }}
-                  >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isSunday ? "var(--color-danger)" : isSaturday ? "var(--color-pixel-blue)" : "var(--color-text-secondary)", marginBottom: 2 }}>
                     {WEEK_DAY_LABELS[i]}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: isTodayCol ? 700 : 400,
-                      width: isTodayCol ? 32 : "auto",
-                      height: isTodayCol ? 32 : "auto",
-                      borderRadius: isTodayCol ? "50%" : 0,
-                      display: isTodayCol ? "inline-flex" : "block",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: isTodayCol ? "var(--color-accent)" : "transparent",
-                      color: isTodayCol ? "#fff" : "var(--color-text-primary)",
-                    }}
-                  >
+                  <div style={{ fontSize: 18, fontWeight: isTodayCol ? 700 : 400, width: isTodayCol ? 32 : "auto", height: isTodayCol ? 32 : "auto", borderRadius: isTodayCol ? "50%" : 0, display: isTodayCol ? "inline-flex" : "block", alignItems: "center", justifyContent: "center", background: isTodayCol ? "var(--color-accent)" : "transparent", color: isTodayCol ? "#fff" : "var(--color-text-primary)" }}>
                     {day.getDate()}
                   </div>
                 </div>
@@ -655,29 +987,32 @@ export default function CalendarView() {
             })}
           </div>
 
-          {/* Week task columns */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              flex: 1,
-              overflow: "hidden",
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", flex: 1, overflow: "hidden" }}>
             {weekDays.map((day, i) => {
               const ds = toDateStr(day);
               const dayTasks = tasksByWeekDate.get(ds) || [];
               const isTodayCol = ds === todayStr;
+              const dayStickers = stickers.filter((s) => s.dateStr === ds);
               return (
                 <div
                   key={i}
                   style={{
-                    borderRight: i < 6 ? "1px solid rgba(46,46,66,0.2)" : "none",
+                    borderRight: i < 6 ? "1px solid var(--color-border)" : "none",
                     padding: "8px 6px",
                     overflow: "auto",
                     background: isTodayCol ? "rgba(108,92,231,0.04)" : "transparent",
                   }}
                 >
+                  {/* Weekly stickers row */}
+                  {dayStickers.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 2, marginBottom: 6 }}>
+                      {dayStickers.map((s) => (
+                        <span key={s.id} style={{ lineHeight: 1 }}>
+                          <StickerDisplay stickerId={s.stickerId} size={20} />
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {dayTasks.map((task) => (
                     <div
                       key={task.id}
@@ -695,15 +1030,7 @@ export default function CalendarView() {
                       className="text-text-primary hover:!opacity-80"
                       title={task.title}
                     >
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          marginBottom: 2,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <div style={{ fontWeight: 500, marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {task.title}
                       </div>
                       <div style={{ fontSize: 10, color: STATUS_COLOR[task.status], fontWeight: 500 }}>
@@ -711,16 +1038,8 @@ export default function CalendarView() {
                       </div>
                     </div>
                   ))}
-                  {dayTasks.length === 0 && (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--color-text-secondary)",
-                        opacity: 0.5,
-                        textAlign: "center",
-                        paddingTop: 12,
-                      }}
-                    >
+                  {dayTasks.length === 0 && dayStickers.length === 0 && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-secondary)", opacity: 0.5, textAlign: "center", paddingTop: 12 }}>
                       -
                     </div>
                   )}
@@ -729,6 +1048,20 @@ export default function CalendarView() {
             })}
           </div>
         </>
+      )}
+
+      {/* Sticker Picker Popover */}
+      {stickerPicker && (
+        <StickerPicker
+          dateStr={stickerPicker.dateStr}
+          anchorRect={stickerPicker.anchorRect}
+          placed={stickers.filter((s) => s.dateStr === stickerPicker.dateStr)}
+          customStickers={customStickers}
+          onPlace={handlePlaceSticker}
+          onRemove={handleRemoveSticker}
+          onUpload={handleUploadCustomSticker}
+          onClose={() => setStickerPicker(null)}
+        />
       )}
 
       {/* Task detail modal */}
