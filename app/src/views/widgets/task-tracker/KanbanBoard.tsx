@@ -117,8 +117,8 @@ function TaskCardContent({ task, onOpenDetail }: { task: Task; onOpenDetail?: (i
 
   const handleStart = (mode: TerminalMode, aiModel?: AiModel, agentRole?: AgentRole, agentEnv?: AgentEnvironment) => {
     createSession({ taskId: task.id, taskTitle: task.title, projectName: project?.name ?? "프로젝트", projectIcon: project?.icon ?? "📁", mode, aiModel, agentRole, agentEnv });
-    setPage("terminal");
     setShowStartModal(false);
+    setPage("terminal");
   };
 
   if (editing) return <KanbanEditForm task={task} onClose={() => setEditing(false)} />;

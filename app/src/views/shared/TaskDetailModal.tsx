@@ -363,9 +363,9 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
       agentRole,
       agentEnv,
     });
-    setPage("terminal");
     setShowStartModal(false);
     onClose();
+    setPage("terminal");
   };
 
   const doneCount = todos.filter((t) => t.done).length;
@@ -373,7 +373,7 @@ export default function TaskDetailModal({ taskId, onClose }: TaskDetailModalProp
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
       {/* Backdrop */}
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} />
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)", animation: "modalFadeIn 0.15s ease-out" }} />
 
       {/* Card */}
       <div

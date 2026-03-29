@@ -76,7 +76,7 @@ export default function StartSessionModal({ taskTitle, onStart, onClose }: Start
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} />
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)", animation: "modalFadeIn 0.15s ease-out" }} />
       <div
         onClick={(e) => e.stopPropagation()}
         style={{

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -837,8 +838,9 @@ function TodayTasks({ onOpenDetail }: { onOpenDetail: (id: string) => void }) {
       >
         + 태스크 추가
       </button>
-      {showAddModal && (
-        <QuickTaskAddModal onClose={() => setShowAddModal(false)} />
+      {showAddModal && createPortal(
+        <QuickTaskAddModal onClose={() => setShowAddModal(false)} />,
+        document.body,
       )}
       <button
         onClick={() => setPage("tasks")}
@@ -1552,11 +1554,6 @@ export default function HomeDashboard() {
           onClose={() => setShowShortcutModal(false)}
         />
       )}
-
-      {/* Projects */}
-      <div style={cardStyle}>
-        <ProjectStrip />
-      </div>
 
       {/* Today + Calendar + Habit */}
       <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
