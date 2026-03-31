@@ -22,7 +22,7 @@ import { useSessionVM } from "../../viewmodels/session.vm";
 import { useAppVM } from "../../viewmodels/app.vm";
 import { useAiVM } from "../../viewmodels/ai.vm";
 import { useTerminal, setPendingFiles, refitAllTerminals } from "../../hooks/useTerminal";
-import MathOverlay, { type MathBlock } from "../widgets/terminal/MathOverlay";
+import MathOverlay from "../widgets/terminal/MathOverlay";
 import type { TerminalMode, AiModel, TerminalSession, AgentRole, AgentEnvironment } from "../../viewmodels/session.vm";
 import { getAgentPreset } from "../../viewmodels/session.vm";
 import StartSessionModal from "../shared/StartSessionModal";
@@ -89,17 +89,9 @@ function TerminalWithDrop({ sessionId, mode, aiModel, agentRole, taskId, dropped
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const dragCounter = useRef(0);
-  const [mathBlocks, setMathBlocks] = useState<MathBlock[]>([]);
-  const mathTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [scanTrigger, setScanTrigger] = useState(0);
 
-  const handleMathDetected = (blocks: MathBlock[]) => {
-    setMathBlocks((prev) => [...prev, ...blocks].slice(-20));
-    // Auto-dismiss after 15s of no new math
-    clearTimeout(mathTimerRef.current);
-    mathTimerRef.current = setTimeout(() => setMathBlocks([]), 15000);
-  };
-
-  useTerminal(sessionId, containerRef, mode, aiModel, false, agentRole, taskId, handleMathDetected);
+  const { getTerminal } = useTerminal(sessionId, containerRef, mode, aiModel, false, agentRole, taskId, () => setScanTrigger((n) => n + 1));
 
   // Sync dropped files to pending map so useTerminal can consume on Enter
   const onClearRef = useRef(onFileClear);
@@ -194,7 +186,7 @@ function TerminalWithDrop({ sessionId, mode, aiModel, agentRole, taskId, dropped
         </div>
       )}
       {/* Math overlay */}
-      <MathOverlay blocks={mathBlocks} onDismiss={() => setMathBlocks([])} />
+      <MathOverlay triggerKey={scanTrigger} getTerminal={getTerminal} containerRef={containerRef} />
       {/* Drag overlay */}
       {dragOver && (
         <div style={{

@@ -4,7 +4,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { TerminalMode, AiModel, AgentRole } from "../viewmodels/session.vm";
 import { getAgentPreset } from "../viewmodels/session.vm";
-import { extractMath, type MathBlock } from "../views/widgets/terminal/MathOverlay";
 
 const TERMINAL_THEME_DARK = {
   background: "#0f0f13",
@@ -121,12 +120,10 @@ export function useTerminal(
   readOnly = false,
   agentRole?: AgentRole,
   taskId?: string,
-  onMathDetected?: (blocks: MathBlock[]) => void,
+  onAiData?: () => void,
 ) {
   const fitRef = useRef<FitAddon | null>(null);
   const spawnedRef = useRef(false);
-  const mathIdCounter = useRef(0);
-  const mathBufferRef = useRef("");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -213,18 +210,13 @@ export function useTerminal(
         const cols = term!.cols;
         const rows = term!.rows;
 
-      // Math detection helper
-      const detectMath = (data: string) => {
-        if (!onMathDetected) return;
-        mathBufferRef.current += data;
-        // Flush detection on newline or after accumulating enough data
-        if (mathBufferRef.current.includes("\n") || mathBufferRef.current.length > 500) {
-          const blocks = extractMath(mathBufferRef.current, mathIdCounter);
-          if (blocks.length > 0) {
-            onMathDetected(blocks);
-          }
-          mathBufferRef.current = "";
-        }
+      // Notify parent when new AI data arrives (for buffer re-scan)
+      let dataFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const notifyData = () => {
+        if (!onAiData) return;
+        if (dataFlushTimer) clearTimeout(dataFlushTimer);
+        dataFlushTimer = setTimeout(() => onAiData(), 200);
       };
 
       if (mode === "ai" && aiModel) {
@@ -270,7 +262,7 @@ export function useTerminal(
         const unsubData = api.ai.onData((sid, data) => {
           if (sid === sessionId) {
             term!.write(data);
-            detectMath(data);
+            notifyData();
           }
         });
 
@@ -308,7 +300,7 @@ export function useTerminal(
         const unsubData = api.pty.onData((sid, data) => {
           if (sid === sessionId) {
             term!.write(data);
-            detectMath(data);
+            notifyData();
           }
         });
         const unsubExit = api.pty.onExit((sid, code) => {

@@ -97,12 +97,18 @@ function TimeAssignModal({
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} />
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 300,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.5)",
+      }}
+    >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: "relative", width: 340, padding: 24, borderRadius: 16,
+          width: 340, padding: 24, borderRadius: 16,
           background: "var(--color-bg-secondary)", border: "1px solid var(--color-border)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.4)",
         }}
@@ -122,8 +128,9 @@ function TimeAssignModal({
               const project = projects.find((p) => p.id === task.projectId);
               return (
                 <button
+                  type="button"
                   key={task.id}
-                  onClick={() => onAssign(task.id)}
+                  onClick={(e) => { e.stopPropagation(); onAssign(task.id); }}
                   style={{
                     padding: "10px 12px", borderRadius: 10, textAlign: "left",
                     border: "1px solid var(--color-border)", cursor: "pointer",
@@ -417,19 +424,24 @@ function Timetable({ onSavedBlockCountChange }: { onSavedBlockCountChange?: (cou
   }, [handleMouseUp]);
 
   const handleAssign = (taskId: string) => {
-    const project = projects.find((p) => {
-      const task = tasks.find((t) => t.id === taskId);
-      return task && p.id === task.projectId;
-    });
+    const cells = [...pendingCells.current]; // snapshot before clearing
+    if (cells.length === 0) return;
+
+    const task = tasks.find((t) => t.id === taskId);
+    const project = task ? projects.find((p) => p.id === task.projectId) : null;
     const color = project?.color ?? "var(--color-accent)";
+
+    const nextBlocks: Record<string, TimeBlock> = {};
+    for (const key of cells) {
+      nextBlocks[key] = { taskId, color };
+    }
+
     setManualBlocks((prev) => {
-      const next = { ...prev };
-      for (const key of pendingCells.current) {
-        next[key] = { taskId, color };
-      }
-      saveBlocksToDb(next);
-      return next;
+      const merged = { ...prev, ...nextBlocks };
+      saveBlocksToDb(merged);
+      return merged;
     });
+
     pendingCells.current = [];
     setAssignRange(null);
   };
@@ -538,13 +550,14 @@ function Timetable({ onSavedBlockCountChange }: { onSavedBlockCountChange?: (cou
       )}
 
       {/* 빠른 시작 블록 클릭 또는 드래그 → 태스크 할당 모달 */}
-      {assignRange && (
+      {assignRange && createPortal(
         <TimeAssignModal
           startTime={assignRange.start}
           endTime={assignRange.end}
           onAssign={handleAssign}
           onClose={() => { setAssignRange(null); pendingCells.current = []; }}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
