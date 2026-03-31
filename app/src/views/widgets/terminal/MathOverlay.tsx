@@ -1,167 +1,217 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import type { Terminal } from "@xterm/xterm";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
-export interface MathBlock {
-  id: number;
-  raw: string;
-  latex: string;
-  displayMode: boolean;
-  timestamp: number;
-}
-
-// ── Detect math patterns in terminal output ──
-const LATEX_COMMANDS =
+// ── Detect LaTeX in a single line ──
+const LATEX_LINE =
   /\\(?:frac|sum|int|prod|sqrt|rightarrow|leftarrow|Rightarrow|Leftarrow|times|div|cdot|leq|geq|neq|approx|infty|partial|nabla|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|phi|psi|begin|end|text|mathrm|mathbf|binom|lim|log|ln|sin|cos|tan|hat|bar|vec|dot|ddot|overline|underline)/;
 
-const DISPLAY_MATH_RE = /\$\$([\s\S]+?)\$\$/g;
-const INLINE_MATH_RE = /\$([^\s$][^$]*?[^\s$])\$/g;
-
-/**
- * Extract math expressions from a chunk of terminal text.
- * Returns MathBlock[] if any found.
- */
-export function extractMath(text: string, idCounter: { current: number }): MathBlock[] {
-  const blocks: MathBlock[] = [];
-  const now = Date.now();
-
-  // Strip ANSI escape codes for detection
-  const clean = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-
-  // Display math $$...$$
-  for (const m of clean.matchAll(DISPLAY_MATH_RE)) {
-    blocks.push({
-      id: idCounter.current++,
-      raw: m[0],
-      latex: m[1].trim(),
-      displayMode: true,
-      timestamp: now,
-    });
-  }
-
-  // Inline math $...$  (only if contains LaTeX commands to avoid shell $ false positives)
-  for (const m of clean.matchAll(INLINE_MATH_RE)) {
-    if (LATEX_COMMANDS.test(m[1])) {
-      blocks.push({
-        id: idCounter.current++,
-        raw: m[0],
-        latex: m[1].trim(),
-        displayMode: false,
-        timestamp: now,
-      });
-    }
-  }
-
-  // Lines with LaTeX commands but no $ delimiters — treat whole line as math
-  if (blocks.length === 0) {
-    const lines = clean.split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed && LATEX_COMMANDS.test(trimmed)) {
-        // Check it has enough math-like content (at least 2 LaTeX tokens or arrow pattern)
-        const matchCount = (trimmed.match(/\\/g) || []).length;
-        if (matchCount >= 1) {
-          blocks.push({
-            id: idCounter.current++,
-            raw: trimmed,
-            latex: trimmed,
-            displayMode: false,
-            timestamp: now,
-          });
-        }
-      }
-    }
-  }
-
-  return blocks;
+/** Check if text has LaTeX worth rendering */
+export function hasLatex(text: string): boolean {
+  if (/\\begin\{\w+\}/.test(text)) return true;
+  if (/\$\$.+?\$\$/s.test(text)) return true;
+  if (/\$[^\s$][^$]*?[^\s$]\$/.test(text) && LATEX_LINE.test(text)) return true;
+  return false;
 }
 
-// ── KaTeX rendered block ──
-function KaTeXBlock({ block }: { block: MathBlock }) {
+// ── Region in the terminal buffer containing LaTeX ──
+interface MathRegion {
+  startRow: number; // viewport-relative
+  endRow: number;
+  latex: string;    // extracted LaTeX source
+}
+
+/**
+ * Scan the visible xterm buffer for LaTeX blocks.
+ * Returns regions with their viewport-relative row positions.
+ */
+function scanBufferForMath(terminal: Terminal): MathRegion[] {
+  const buf = terminal.buffer.active;
+  const baseRow = buf.viewportY;
+  const rows = terminal.rows;
+
+  // Collect all visible lines
+  const lines: string[] = [];
+  for (let r = 0; r < rows; r++) {
+    const line = buf.getLine(baseRow + r);
+    lines.push(line ? line.translateToString(true).trimEnd() : "");
+  }
+
+  const regions: MathRegion[] = [];
+
+  // Find \begin{...}...\end{...} blocks
+  let i = 0;
+  while (i < lines.length) {
+    const beginMatch = lines[i].match(/\\begin\{(\w+)\}/);
+    if (beginMatch) {
+      const envName = beginMatch[1];
+      const endPattern = `\\end{${envName}}`;
+      let endRow = i;
+      // Find matching \end
+      for (let j = i; j < lines.length; j++) {
+        if (lines[j].includes(endPattern)) {
+          endRow = j;
+          break;
+        }
+      }
+      // Collect the full LaTeX block, joining inner lines with \\ for KaTeX line breaks
+      const envLines = lines.slice(i, endRow + 1);
+      const joined = envLines.map((line, idx) => {
+        // First line (\begin{...}) and last line (\end{...}) stay as-is
+        if (idx === 0 || idx === envLines.length - 1) return line;
+        // Inner content lines: ensure they end with \\ for KaTeX row separator
+        const trimLine = line.trimEnd();
+        if (trimLine.endsWith("\\\\")) return trimLine;
+        if (trimLine.endsWith("\\")) return trimLine + "\\"; // single \ → \\
+        return trimLine + " \\\\"; // no separator → add \\
+      }).join("\n");
+      regions.push({ startRow: i, endRow, latex: joined.trim() });
+      i = endRow + 1;
+      continue;
+    }
+
+    // Inline $...$ with LaTeX commands on a single line
+    if (/\$[^\s$][^$]*?[^\s$]\$/.test(lines[i]) && LATEX_LINE.test(lines[i])) {
+      // Extract just the $...$ part
+      const inlineMatch = lines[i].match(/\$([^\s$][^$]*?[^\s$])\$/);
+      if (inlineMatch) {
+        regions.push({ startRow: i, endRow: i, latex: inlineMatch[1] });
+      }
+      i++;
+      continue;
+    }
+
+    // Display $$...$$ (may span lines)
+    if (lines[i].includes("$$")) {
+      const startRow = i;
+      let endRow = i;
+      const combined = [lines[i]];
+      // If only one $$ on this line, look for closing $$
+      const ddCount = (lines[i].match(/\$\$/g) || []).length;
+      if (ddCount === 1) {
+        for (let j = i + 1; j < lines.length; j++) {
+          combined.push(lines[j]);
+          if (lines[j].includes("$$")) {
+            endRow = j;
+            break;
+          }
+        }
+      }
+      const full = combined.join("\n");
+      const ddMatch = full.match(/\$\$([\s\S]+?)\$\$/);
+      if (ddMatch) {
+        regions.push({ startRow, endRow, latex: ddMatch[1].trim() });
+        i = endRow + 1;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  return regions;
+}
+
+// ── Single KaTeX rendered overlay ──
+function RenderedBlock({
+  region,
+  cellHeight,
+}: {
+  region: MathRegion;
+  cellHeight: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
+  const isDisplay = region.latex.includes("\\begin") || region.endRow > region.startRow;
 
   useEffect(() => {
     if (!ref.current) return;
     try {
-      katex.render(block.latex, ref.current, {
-        displayMode: block.displayMode,
+      katex.render(region.latex, ref.current, {
+        displayMode: isDisplay,
         throwOnError: false,
         strict: false,
       });
     } catch {
-      ref.current.textContent = block.raw;
+      // If render fails, hide the overlay so raw text shows through
+      if (ref.current) ref.current.style.display = "none";
     }
-  }, [block.latex, block.displayMode, block.raw]);
+  }, [region.latex, isDisplay]);
+
+  const top = region.startRow * cellHeight;
+  const height = (region.endRow - region.startRow + 1) * cellHeight;
 
   return (
     <div
       ref={ref}
       style={{
-        padding: block.displayMode ? "8px 12px" : "4px 10px",
-        fontSize: block.displayMode ? 18 : 15,
+        position: "absolute",
+        top,
+        left: 0,
+        right: 0,
+        height,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: isDisplay ? "center" : "flex-start",
+        paddingLeft: isDisplay ? 0 : 16,
+        background: "var(--color-bg-primary, #0f0f13)",
+        color: "var(--color-text-primary, #e8e8f0)",
+        fontSize: isDisplay ? 18 : 15,
         lineHeight: 1.6,
+        overflow: "hidden",
+        zIndex: 5,
+        pointerEvents: "none",
       }}
     />
   );
 }
 
-// ── Overlay component ──
+// ── Main overlay component ──
 export default function MathOverlay({
-  blocks,
-  onDismiss,
+  triggerKey,
+  getTerminal,
+  containerRef,
 }: {
-  blocks: MathBlock[];
-  onDismiss: () => void;
+  /** Changes whenever new AI data arrives, triggering a re-scan */
+  triggerKey: number;
+  getTerminal?: () => Terminal | undefined;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-  if (blocks.length === 0) return null;
+  const [regions, setRegions] = useState<MathRegion[]>([]);
+  const [cellHeight, setCellHeight] = useState(0);
+
+  const scan = useCallback(() => {
+    const term = getTerminal?.();
+    const el = containerRef?.current;
+    if (!term || !el) {
+      setRegions([]);
+      return;
+    }
+    setCellHeight(el.clientHeight / term.rows);
+    const found = scanBufferForMath(term);
+    setRegions(found);
+  }, [getTerminal, containerRef]);
+
+  // Re-scan when trigger changes (new AI output)
+  useEffect(() => {
+    scan();
+  }, [triggerKey, scan]);
+
+  // Re-scan on terminal scroll
+  useEffect(() => {
+    const term = getTerminal?.();
+    if (!term) return;
+    const d = term.onScroll(() => scan());
+    return () => d.dispose();
+  }, [getTerminal, scan]);
+
+  if (regions.length === 0 || cellHeight === 0) return null;
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        bottom: 8,
-        right: 8,
-        zIndex: 20,
-        maxWidth: "70%",
-        maxHeight: "40%",
-        overflow: "auto",
-        background: "var(--color-bg-secondary)",
-        border: "1px solid var(--color-border)",
-        borderRadius: 10,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-        backdropFilter: "blur(8px)",
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "6px 12px",
-          borderBottom: "1px solid var(--color-border)",
-          fontSize: 11,
-          color: "var(--color-text-secondary)",
-          fontWeight: 600,
-          letterSpacing: 0.5,
-        }}
-      >
-        <span>MATH</span>
-        <span
-          onClick={onDismiss}
-          style={{ cursor: "pointer", opacity: 0.5, fontSize: 13 }}
-          className="hover:opacity-100"
-        >
-          ✕
-        </span>
-      </div>
-
-      {/* Math blocks */}
-      <div style={{ padding: "4px 8px" }}>
-        {blocks.map((block) => (
-          <KaTeXBlock key={block.id} block={block} />
-        ))}
-      </div>
-    </div>
+    <>
+      {regions.map((region, i) => (
+        <RenderedBlock key={`${i}-${region.startRow}`} region={region} cellHeight={cellHeight} />
+      ))}
+    </>
   );
 }
