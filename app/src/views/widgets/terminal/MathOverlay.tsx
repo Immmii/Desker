@@ -14,6 +14,9 @@ function isMathContent(s: string): boolean {
   if (/^[\s\d.,$]+$/.test(t)) return false;
   if (/^\d+(?:\.\d+)?\s*[a-zA-Z]{1,4}$/.test(t)) return false;
 
+  // Any backslash command is a strong signal of math (covers everything from
+  // \alpha to \blacksquare without maintaining a whitelist).
+  if (/\\[a-zA-Z]/.test(t)) return true;
   if (LATEX_LINE.test(t)) return true;
   if (/[_^{}]/.test(t)) return true;
   if (/[a-zA-Z]\s*\(/.test(t)) return true;
@@ -387,6 +390,10 @@ interface ActiveDecoration {
   key: string;
   decoration: IDecoration;
   renderedRef: { current: string };
+  // Source LaTeX/text used as the clipboard payload when the user drag-
+  // selects inside this decoration and copies. Stored in a mutable ref so
+  // in-place updates (streaming/typing) keep the clipboard content current.
+  sourceRef: { current: string };
 }
 
 // ── Build inner-wrapper HTML for a decoration element ──
@@ -399,26 +406,36 @@ const MATH_FG = "var(--color-text-primary, #e8e8f0)";
 const MONO_FONT = "'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, monospace";
 
 function wrapperHtml(contentHtml: string, displayMode: boolean): string {
-  const fontSize = displayMode ? 18 : 13;
-  const lineHeight = displayMode ? 1.6 : 1.4;
-  // Display math: wrapper centered horizontally AND vertically, with
-  // `overflow: visible` so tall matrices can spill into neighboring rows
-  // (decoration height is based on source line count, which is nearly
-  // always 1 cell for a single logical line — far too short for a matrix).
-  // Inline mixed rows: keep `overflow: hidden` + `pre-wrap` for clean flow.
+  const fontSize = displayMode ? 16 : 13;
+  const lineHeight = displayMode ? 1.5 : 1.4;
+  // Display math may be taller than 1 cell (matrices). We want vertical spill
+  // into neighboring rows but NEVER horizontal spill out of the terminal area.
+  // CSS `overflow-x: hidden; overflow-y: visible` gets coerced by the spec,
+  // so we use `clip-path: inset()` — negative top/bottom inset extends the
+  // visible region vertically while the zero left/right inset clips
+  // horizontally at the decoration edge.
+  // Inline mixed rows keep plain `overflow: hidden` + pre-wrap.
   const whiteSpace = displayMode ? "nowrap" : "pre-wrap";
   const justify = displayMode ? "center" : "flex-start";
   const align = "center";
   const overflow = displayMode ? "visible" : "hidden";
+  const clipPath = displayMode ? "inset(-1000px 0 -1000px 0)" : "none";
+  // `pointer-events: auto` + `user-select: text` lets the user drag-select
+  // and copy rendered math. We rely on a `copy` event listener attached at
+  // the document level (see setupMathCopyHandler) to replace the clipboard
+  // with the original source LaTeX when the selection is inside a
+  // decoration element.
   return (
     `<div style="position:absolute;inset:0;display:flex;` +
     `align-items:${align};justify-content:${justify};` +
     `background:${MATH_BG};color:${MATH_FG};` +
     `font-family:${MONO_FONT};` +
     `font-size:${fontSize}px;line-height:${lineHeight};` +
-    `overflow:${overflow};white-space:${whiteSpace};` +
+    `overflow:${overflow};clip-path:${clipPath};` +
+    `white-space:${whiteSpace};` +
     `padding:0 4px;box-sizing:border-box;` +
-    `pointer-events:none;">${contentHtml}</div>`
+    `user-select:text;-webkit-user-select:text;` +
+    `pointer-events:auto;">${contentHtml}</div>`
   );
 }
 
@@ -501,18 +518,24 @@ function reconcileDecorations(
 
     // Build HTML content for the placement (same for new + update paths)
     let contentHtml = "";
+    let sourceText = "";
     if (p.kind === "display") {
       contentHtml = renderMathHtml(p.latex, true);
+      sourceText = p.latex;
     } else {
       const parts: string[] = [];
+      const sourceParts: string[] = [];
       for (const seg of p.segments) {
         if (seg.type === "text") {
           parts.push(escapeHtml(seg.value));
+          sourceParts.push(seg.value);
         } else {
           parts.push(renderMathHtml(seg.value, false));
+          sourceParts.push(`$${seg.value}$`);
         }
       }
       contentHtml = parts.join("");
+      sourceText = sourceParts.join("");
     }
     const rendered = wrapperHtml(contentHtml, displayMode);
 
@@ -522,9 +545,13 @@ function reconcileDecorations(
     if (existing) {
       if (existing.renderedRef.current !== rendered) {
         existing.renderedRef.current = rendered;
+        existing.sourceRef.current = sourceText;
         const el = existing.decoration.element;
-        if (el && el.innerHTML !== rendered) {
-          el.innerHTML = rendered;
+        if (el) {
+          if (el.innerHTML !== rendered) el.innerHTML = rendered;
+          if (el.getAttribute("data-math-source") !== sourceText) {
+            el.setAttribute("data-math-source", sourceText);
+          }
         }
       }
       next.set(key, existing);
@@ -555,15 +582,19 @@ function reconcileDecorations(
     }
 
     const renderedRef = { current: rendered };
+    const sourceRef = { current: sourceText };
     decoration.onRender((el) => {
       // Do NOT touch el.style.display — xterm toggles visibility via display
       // when the marker scrolls out of view, and overriding would cause bleed.
       if (el.innerHTML !== renderedRef.current) {
         el.innerHTML = renderedRef.current;
       }
+      if (el.getAttribute("data-math-source") !== sourceRef.current) {
+        el.setAttribute("data-math-source", sourceRef.current);
+      }
     });
 
-    next.set(key, { key, decoration, renderedRef });
+    next.set(key, { key, decoration, renderedRef, sourceRef });
   }
 
   // Whatever's left in `active` is no longer present — dispose
@@ -572,6 +603,31 @@ function reconcileDecorations(
   }
 
   return next;
+}
+
+// ── Global copy handler: when the user copies a selection that lives inside
+//    a math decoration, replace the clipboard with the original LaTeX source
+//    instead of the KaTeX-rendered HTML characters. ──
+let _copyHandlerInstalled = false;
+function installMathCopyHandler() {
+  if (_copyHandlerInstalled || typeof document === "undefined") return;
+  _copyHandlerInstalled = true;
+  document.addEventListener("copy", (e: ClipboardEvent) => {
+    const sel = document.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    // Find the closest element with data-math-source covering the selection.
+    let node: Node | null = range.commonAncestorContainer;
+    if (node && node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+    const mathEl = (node as Element | null)?.closest?.("[data-math-source]") as
+      | HTMLElement
+      | null;
+    if (!mathEl) return;
+    const source = mathEl.getAttribute("data-math-source");
+    if (source == null) return;
+    e.preventDefault();
+    e.clipboardData?.setData("text/plain", source);
+  });
 }
 
 // ── React wrapper (stateless shell + imperative decorations) ──
@@ -589,6 +645,7 @@ export default function MathOverlay({
   const pendingRef = useRef<number | null>(null);
 
   useEffect(() => {
+    installMathCopyHandler();
     let disposed = false;
 
     const schedule = () => {
