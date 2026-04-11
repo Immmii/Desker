@@ -398,22 +398,24 @@ const MATH_FG = "var(--color-text-primary, #e8e8f0)";
 const MONO_FONT = "'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, monospace";
 
 function wrapperHtml(contentHtml: string, displayMode: boolean): string {
-  const justify = displayMode ? "center" : "flex-start";
   const fontSize = displayMode ? 18 : 13;
   const lineHeight = displayMode ? 1.6 : 1.4;
-  // Inner wrapper uses absolute positioning to fill the decoration element.
-  // `inset:0` → covers the whole decoration area → hides xterm text behind it.
-  // Display math stays centered single-line (KaTeX handles its own layout).
-  // Inline mixed rows use `pre-wrap` so long wrapped lines keep flowing.
+  // Display math: wrapper centered horizontally AND vertically, with
+  // `overflow: visible` so tall matrices can spill into neighboring rows
+  // (decoration height is based on source line count, which is nearly
+  // always 1 cell for a single logical line — far too short for a matrix).
+  // Inline mixed rows: keep `overflow: hidden` + `pre-wrap` for clean flow.
   const whiteSpace = displayMode ? "nowrap" : "pre-wrap";
-  const align = displayMode ? "center" : "flex-start";
+  const justify = displayMode ? "center" : "flex-start";
+  const align = "center";
+  const overflow = displayMode ? "visible" : "hidden";
   return (
     `<div style="position:absolute;inset:0;display:flex;` +
     `align-items:${align};justify-content:${justify};` +
     `background:${MATH_BG};color:${MATH_FG};` +
     `font-family:${MONO_FONT};` +
     `font-size:${fontSize}px;line-height:${lineHeight};` +
-    `overflow:hidden;white-space:${whiteSpace};` +
+    `overflow:${overflow};white-space:${whiteSpace};` +
     `padding:0 4px;box-sizing:border-box;` +
     `pointer-events:none;">${contentHtml}</div>`
   );
