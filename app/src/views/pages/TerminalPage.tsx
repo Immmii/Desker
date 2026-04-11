@@ -996,6 +996,16 @@ export default function TerminalPage() {
     }
   }, [effectivePanes.length]);
 
+  // Refit when the terminal page becomes visible again — pages are kept
+  // mounted with display:none, so xterm's ResizeObserver sees 0-width while
+  // hidden and skips fit. Forcing a refit on re-show restores cols/rows.
+  const currentPage = useAppVM((s) => s.currentPage);
+  useEffect(() => {
+    if (currentPage === "terminal") {
+      refitAllTerminals();
+    }
+  }, [currentPage]);
+
   if (sessions.length === 0) return <EmptyTerminal />;
 
   // Helper: find which pane a session belongs to
