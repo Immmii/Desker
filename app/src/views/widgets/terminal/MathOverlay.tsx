@@ -8,11 +8,17 @@ const LATEX_LINE =
   /\\(?:frac|sum|int|prod|sqrt|rightarrow|leftarrow|Rightarrow|Leftarrow|times|div|cdot|cdots|dots|ldots|leq|geq|neq|approx|infty|partial|nabla|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|omega|Omega|phi|psi|begin|end|text|mathrm|mathbf|mathbb|binom|lim|log|ln|sin|cos|tan|hat|bar|vec|dot|ddot|overline|underline|subset|supset|subseteq|supseteq|in|notin|cap|cup|forall|exists|neg|land|lor|implies|iff|equiv|sim|cong|perp|parallel|angle|triangle|circ|star|bullet|oplus|otimes)/;
 
 function isMathContent(s: string): boolean {
-  if (LATEX_LINE.test(s)) return true;
-  if (/[_^{}]/.test(s)) return true;
-  if (/[a-zA-Z]\s*\(/.test(s)) return true;
-  if (/[0-9]\s*[a-zA-Z]|[a-zA-Z]\s*[0-9]/.test(s)) return true;
-  if (/[+\-*/=]/.test(s) && /[a-zA-Z0-9]/.test(s)) return true;
+  const t = s.trim();
+  if (!t) return false;
+  // Pure digits/punct → currency/plain number (not math)
+  if (/^[\s\d.,$]+$/.test(t)) return false;
+  if (/^\d+(?:\.\d+)?\s*[a-zA-Z]{1,4}$/.test(t)) return false;
+
+  if (LATEX_LINE.test(t)) return true;
+  if (/[_^{}]/.test(t)) return true;
+  if (/[a-zA-Z]\s*\(/.test(t)) return true;
+  if (/[+\-*/=]/.test(t) && /[a-zA-Z0-9]/.test(t)) return true;
+  if (/[0-9]\s*[a-zA-Z]|[a-zA-Z]\s*[0-9]/.test(t)) return true;
   return false;
 }
 
@@ -83,7 +89,9 @@ function findInlineMatches(text: string): InlineMatch[] {
     out.push({ start: ddm.index, end: ddm.index + ddm[0].length, latex: ddm[1].trim() });
   }
 
-  const dollarRe = /(?<!\$)\$([^\s$][^$]*?[^\s$]|[^\s$])\$(?!\$)/g;
+  // Match any $...$ inner content (no nested $, no newline). Leading/trailing
+  // whitespace inside is OK — isMathContent filters currency-like junk.
+  const dollarRe = /(?<!\$)\$([^$\n]+?)\$(?!\$)/g;
   let dm: RegExpExecArray | null;
   while ((dm = dollarRe.exec(text)) !== null) {
     if (isMathContent(dm[1])) {
@@ -412,12 +420,47 @@ function wrapperHtml(contentHtml: string, displayMode: boolean): string {
 }
 
 // ── Restore backslashes that CLIs (e.g. ChatGPT) strip when printing LaTeX ──
-// A lone `\` followed by a digit or minus sign inside a matrix is almost
-// certainly a stripped `\\` (bmatrix row separator before the next entry).
-// Restoring it lets KaTeX parse. Letters after `\` are real commands and `\|`
-// is the norm delimiter — both are left alone.
+// Scenario A: CLI strips `\\` → `\`   → we see `\0` in a matrix, need `\\0`
+// Scenario B: CLI strips `\\` → (gone) → we see `0 0` instead of `0\\0`
+//
+// Handle A via regex: a single `\` NOT preceded by another `\`, followed by a
+// digit or minus sign, becomes `\\`. The negative lookbehind prevents us from
+// breaking already-valid `\\0` (two backslashes) by adding a third one.
+//
+// Handle B inside bmatrix-ish environments by counting the cells against the
+// original entry count and auto-inserting row separators when the cells are
+// uniformly distributed (heuristic — only kicks in for square matrices).
 function restoreLatex(s: string): string {
-  return s.replace(/\\(?=[\d\-])/g, "\\\\");
+  // A) Restore lone `\` → `\\` before digit or minus (not already `\\`)
+  let out = s.replace(/(?<!\\)\\(?=[\d\-])/g, "\\\\");
+
+  // B) Within each \begin{…matrix}…\end{…matrix}, if the content has no row
+  //    separators (\\) AND the cell count on the single row is a perfect
+  //    square, split it into rows. Only affects bmatrix/pmatrix/matrix/vmatrix.
+  out = out.replace(
+    /\\begin\{(bmatrix|pmatrix|matrix|vmatrix|Vmatrix|Bmatrix)\}([\s\S]*?)\\end\{\1\}/g,
+    (_full, env: string, body: string) => {
+      if (body.includes("\\\\")) return `\\begin{${env}}${body}\\end{${env}}`;
+      // Collapse whitespace-only gaps into &; split by `&`
+      const cells = body
+        .split("&")
+        .map((c) => c.trim())
+        .filter((c) => c.length > 0);
+      const n = cells.length;
+      if (n < 4) return `\\begin{${env}}${body}\\end{${env}}`;
+      const sqrt = Math.sqrt(n);
+      if (!Number.isInteger(sqrt)) {
+        return `\\begin{${env}}${body}\\end{${env}}`;
+      }
+      const rows: string[] = [];
+      for (let r = 0; r < sqrt; r++) {
+        rows.push(cells.slice(r * sqrt, (r + 1) * sqrt).join(" & "));
+      }
+      return `\\begin{${env}}${rows.join(" \\\\ ")}\\end{${env}}`;
+    }
+  );
+
+  return out;
 }
 
 function renderMathHtml(latex: string, displayMode: boolean): string {
