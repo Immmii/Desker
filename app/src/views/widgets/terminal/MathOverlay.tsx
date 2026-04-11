@@ -372,20 +372,21 @@ function scanBuffer(term: Terminal): Placement[] {
   return placements;
 }
 
-// ── Serialize a placement into a stable key (for diffing scans) ──
-function placementKey(p: Placement): string {
-  if (p.kind === "mixedRow") {
-    const segKey = p.segments.map((s) => `${s.type[0]}${s.value}`).join("|");
-    return `m:${p.absRowStart}:${p.absRowEnd}:${segKey}`;
-  }
-  return `d:${p.absRowStart}:${p.absRowEnd}:${p.latex}`;
+// ── Position-only key so we can reuse decorations when only content changes
+//    (e.g. AI streaming into the same row). Kind is included so a row that
+//    switches between mixedRow ↔ display still gets recreated. ──
+function positionKey(p: Placement): string {
+  return `${p.kind[0]}:${p.absRowStart}:${p.absRowEnd}`;
 }
 
 // ── Active decoration bookkeeping ──
+// `renderedRef.current` is mutated in-place when content changes so the
+// existing onRender handler picks up the new HTML without needing to dispose
+// and recreate the decoration (which would flicker raw text for one frame).
 interface ActiveDecoration {
   key: string;
   decoration: IDecoration;
-  rendered: string;
+  renderedRef: { current: string };
 }
 
 // ── Build inner-wrapper HTML for a decoration element ──
@@ -495,22 +496,14 @@ function reconcileDecorations(
   const cols = term.cols;
 
   for (const p of placements) {
-    const key = placementKey(p);
-    const existing = active.get(key);
-    if (existing) {
-      next.set(key, existing);
-      active.delete(key);
-      continue;
-    }
-
+    const key = positionKey(p);
     const displayMode = p.kind === "display";
 
-    // Build HTML content for the decoration
+    // Build HTML content for the placement (same for new + update paths)
     let contentHtml = "";
     if (p.kind === "display") {
       contentHtml = renderMathHtml(p.latex, true);
     } else {
-      // mixedRow — per-segment: plain text as HTML, math via KaTeX
       const parts: string[] = [];
       for (const seg of p.segments) {
         if (seg.type === "text") {
@@ -523,15 +516,28 @@ function reconcileDecorations(
     }
     const rendered = wrapperHtml(contentHtml, displayMode);
 
-    // Pick the absolute row, x offset, width, height for the decoration.
-    // Both kinds may span multiple wrapped rows — height is the row count.
+    // Reuse existing decoration at the same position: update content in-place
+    // (no dispose → no blank frame where xterm raw text shows through).
+    const existing = active.get(key);
+    if (existing) {
+      if (existing.renderedRef.current !== rendered) {
+        existing.renderedRef.current = rendered;
+        const el = existing.decoration.element;
+        if (el && el.innerHTML !== rendered) {
+          el.innerHTML = rendered;
+        }
+      }
+      next.set(key, existing);
+      active.delete(key);
+      continue;
+    }
+
+    // No existing — create new decoration
     const absRow = p.absRowStart;
     const x = 0;
     const width = cols;
     const height = Math.max(p.absRowEnd - p.absRowStart + 1, 1);
 
-    // Create a marker at the absolute buffer row (bypass public registerMarker
-    // which only marks cursor offset).
     const marker = bufferBuf.addMarker?.(absRow);
     if (!marker) continue;
 
@@ -548,15 +554,16 @@ function reconcileDecorations(
       continue;
     }
 
+    const renderedRef = { current: rendered };
     decoration.onRender((el) => {
-      // Do NOT touch el.style.display — xterm sets it to 'none' when the
-      // marker is outside the viewport; overriding it causes bleed.
-      if (el.innerHTML !== rendered) {
-        el.innerHTML = rendered;
+      // Do NOT touch el.style.display — xterm toggles visibility via display
+      // when the marker scrolls out of view, and overriding would cause bleed.
+      if (el.innerHTML !== renderedRef.current) {
+        el.innerHTML = renderedRef.current;
       }
     });
 
-    next.set(key, { key, decoration, rendered });
+    next.set(key, { key, decoration, renderedRef });
   }
 
   // Whatever's left in `active` is no longer present — dispose
