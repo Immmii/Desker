@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Terminal, IDecoration, IBufferLine } from "@xterm/xterm";
+import type { Terminal, IDecoration } from "@xterm/xterm";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
@@ -32,37 +32,6 @@ export function hasLatex(text: string): boolean {
   return false;
 }
 
-// ── Buffer line → visible text + char-index ↔ cell-column map (CJK-safe) ──
-interface LineData {
-  text: string;
-  charColStart: number[];
-  charColEnd: number[];
-}
-
-function buildLineData(line: IBufferLine, cols: number): LineData {
-  const parts: string[] = [];
-  const charColStart: number[] = [];
-  const charColEnd: number[] = [];
-  for (let col = 0; col < cols; col++) {
-    const cell = line.getCell(col);
-    if (!cell) break;
-    const w = cell.getWidth();
-    if (w === 0) continue;
-    const chars = cell.getChars() || " ";
-    for (let k = 0; k < chars.length; k++) {
-      charColStart.push(col);
-      charColEnd.push(col + w);
-    }
-    parts.push(chars);
-  }
-  let text = parts.join("");
-  let end = text.length;
-  while (end > 0 && /\s/.test(text[end - 1])) end--;
-  text = text.slice(0, end);
-  charColStart.length = end;
-  charColEnd.length = end;
-  return { text, charColStart, charColEnd };
-}
 
 // ── Placements (absolute buffer row) ──
 // - display: pure math block spanning one or more rows (e.g. $$...$$, \[...\])
@@ -77,7 +46,8 @@ interface Segment {
 type Placement =
   | {
       kind: "mixedRow";
-      absRow: number;
+      absRowStart: number;
+      absRowEnd: number;
       segments: Segment[];
     }
   | {
@@ -157,40 +127,74 @@ function buildMixedRowSegments(text: string, matches: InlineMatch[]): Segment[] 
   return segments;
 }
 
+// ── Logical line: one or more consecutive wrapped rows joined into one text ──
+interface LogicalLine {
+  absRowStart: number;  // buffer row of the first visible row
+  absRowEnd: number;    // buffer row of the last visible row (inclusive)
+  text: string;         // concatenated text across all wrapped rows
+}
+
+function buildLogicalLines(
+  term: Terminal,
+  scanStart: number,
+  scanRows: number,
+): LogicalLine[] {
+  const buf = term.buffer.active;
+  const out: LogicalLine[] = [];
+
+  for (let r = 0; r < scanRows; r++) {
+    const line = buf.getLine(scanStart + r);
+    if (!line) continue;
+    // Preserve intra-row whitespace by passing `false` — we want the exact
+    // cell contents because wrapped-row content continues into the next row.
+    const rowText = line.translateToString(false);
+    const absRow = scanStart + r;
+
+    if (line.isWrapped && out.length > 0) {
+      const prev = out[out.length - 1];
+      prev.text += rowText;
+      prev.absRowEnd = absRow;
+    } else {
+      out.push({ absRowStart: absRow, absRowEnd: absRow, text: rowText });
+    }
+  }
+
+  // Trim trailing whitespace at the end of each fully-built logical line.
+  for (const ll of out) {
+    ll.text = ll.text.replace(/\s+$/, "");
+  }
+  return out;
+}
+
 // ── Scan entire buffer (all scrollback + viewport) ──
 function scanBuffer(term: Terminal): Placement[] {
   const buf = term.buffer.active;
-  const cols = term.cols;
   const totalRows = buf.length;
 
   // Limit scan to the last ~2000 rows to keep cost bounded on huge scrollback
   const scanStart = Math.max(0, totalRows - 2000);
   const scanRows = totalRows - scanStart;
 
-  const lineData: LineData[] = new Array(scanRows);
-  for (let r = 0; r < scanRows; r++) {
-    const line = buf.getLine(scanStart + r);
-    lineData[r] = line ? buildLineData(line, cols) : { text: "", charColStart: [], charColEnd: [] };
-  }
+  const logicalLines = buildLogicalLines(term, scanStart, scanRows);
 
   const placements: Placement[] = [];
   let i = 0;
-  while (i < scanRows) {
-    const { text } = lineData[i];
-    const absRow = scanStart + i;
+  while (i < logicalLines.length) {
+    const current = logicalLines[i];
+    const { text, absRowStart, absRowEnd } = current;
 
-    // 1) \begin{...}...\end{...}
+    // 1) \begin{...}...\end{...} — may span multiple logical lines
     const beginMatch = text.match(/\\begin\{(\w+)\}/);
     if (beginMatch) {
       const endTag = `\\end{${beginMatch[1]}}`;
-      let endRowRel = i;
-      for (let j = i; j < scanRows; j++) {
-        if (lineData[j].text.includes(endTag)) {
-          endRowRel = j;
+      let endIdx = i;
+      for (let j = i; j < logicalLines.length; j++) {
+        if (logicalLines[j].text.includes(endTag)) {
+          endIdx = j;
           break;
         }
       }
-      const envLines = lineData.slice(i, endRowRel + 1).map((d) => d.text);
+      const envLines = logicalLines.slice(i, endIdx + 1).map((d) => d.text);
       const joined = envLines
         .map((line, idx) => {
           if (idx === 0 || idx === envLines.length - 1) return line;
@@ -202,43 +206,43 @@ function scanBuffer(term: Terminal): Placement[] {
         .join("\n");
       placements.push({
         kind: "display",
-        absRowStart: absRow,
-        absRowEnd: scanStart + endRowRel,
+        absRowStart,
+        absRowEnd: logicalLines[endIdx].absRowEnd,
         latex: joined.trim(),
       });
-      i = endRowRel + 1;
+      i = endIdx + 1;
       continue;
     }
 
-    // 2) \[...\] or bare [...]
+    // 2) \[...\] or bare [...]  (may span multiple logical lines)
     {
       const isEscapedBracket = /\\\[/.test(text);
       const isBareBracket = !isEscapedBracket && text.trim() === "[";
       if (isEscapedBracket || isBareBracket) {
-        const startRowRel = i;
-        let endRowRel = i;
+        const startIdx = i;
+        let endIdx = i;
         const closing = isBareBracket ? /^\s*\]\s*$/ : /\\\]/;
         const combined = [text];
         if (isBareBracket || !text.includes("\\]")) {
-          for (let j = i + 1; j < scanRows; j++) {
-            combined.push(lineData[j].text);
-            if (closing.test(lineData[j].text)) {
-              endRowRel = j;
+          for (let j = i + 1; j < logicalLines.length; j++) {
+            combined.push(logicalLines[j].text);
+            if (closing.test(logicalLines[j].text)) {
+              endIdx = j;
               break;
             }
           }
         }
-        if (endRowRel > startRowRel) {
+        if (endIdx > startIdx) {
           const inner = combined.slice(1, -1).join("\n");
           const MATH_CONTENT = /[_^][\{(]|\\[a-zA-Z]|[=+].*[=+]|\{[a-zA-Z0-9]+\}/;
           if (isEscapedBracket || LATEX_LINE.test(inner) || MATH_CONTENT.test(inner)) {
             placements.push({
               kind: "display",
-              absRowStart: scanStart + startRowRel,
-              absRowEnd: scanStart + endRowRel,
+              absRowStart,
+              absRowEnd: logicalLines[endIdx].absRowEnd,
               latex: inner.trim(),
             });
-            i = endRowRel + 1;
+            i = endIdx + 1;
             continue;
           }
         } else if (isEscapedBracket) {
@@ -247,28 +251,28 @@ function scanBuffer(term: Terminal): Placement[] {
           if (br) {
             placements.push({
               kind: "display",
-              absRowStart: scanStart + startRowRel,
-              absRowEnd: scanStart + endRowRel,
+              absRowStart,
+              absRowEnd: logicalLines[endIdx].absRowEnd,
               latex: br[1].trim(),
             });
-            i = endRowRel + 1;
+            i = endIdx + 1;
             continue;
           }
         }
       }
     }
 
-    // 3) $$...$$
+    // 3) $$...$$  — now that we have logical lines, usually on one line
     if (text.includes("$$")) {
-      const startRowRel = i;
-      let endRowRel = i;
+      const startIdx = i;
+      let endIdx = i;
       const combined = [text];
       const count = (text.match(/\$\$/g) || []).length;
       if (count === 1) {
-        for (let j = i + 1; j < scanRows; j++) {
-          combined.push(lineData[j].text);
-          if (lineData[j].text.includes("$$")) {
-            endRowRel = j;
+        for (let j = i + 1; j < logicalLines.length; j++) {
+          combined.push(logicalLines[j].text);
+          if (logicalLines[j].text.includes("$$")) {
+            endIdx = j;
             break;
           }
         }
@@ -278,21 +282,25 @@ function scanBuffer(term: Terminal): Placement[] {
       if (dd) {
         placements.push({
           kind: "display",
-          absRowStart: scanStart + startRowRel,
-          absRowEnd: scanStart + endRowRel,
+          absRowStart,
+          absRowEnd: logicalLines[endIdx].absRowEnd,
           latex: dd[1].trim(),
         });
-        i = endRowRel + 1;
+        i = endIdx + 1;
         continue;
       }
+      // Fall through — maybe a lone $$ not forming a block
+      void startIdx;
     }
 
-    // 4) Inline $...$ / \(...\) mixed with text — render as a full-row block
+    // 4) Inline $...$ / \(...\) mixed with text — replace the whole logical
+    //    line (all its wrapped visible rows) with one decoration.
     const matches = findInlineMatches(text);
     if (matches.length > 0) {
       placements.push({
         kind: "mixedRow",
-        absRow,
+        absRowStart,
+        absRowEnd,
         segments: buildMixedRowSegments(text, matches),
       });
       i++;
@@ -305,8 +313,8 @@ function scanBuffer(term: Terminal): Placement[] {
       if (bm && LATEX_LINE.test(bm[1])) {
         placements.push({
           kind: "display",
-          absRowStart: absRow,
-          absRowEnd: absRow,
+          absRowStart,
+          absRowEnd,
           latex: bm[1].trim(),
         });
         i++;
@@ -324,7 +332,7 @@ function scanBuffer(term: Terminal): Placement[] {
 function placementKey(p: Placement): string {
   if (p.kind === "mixedRow") {
     const segKey = p.segments.map((s) => `${s.type[0]}${s.value}`).join("|");
-    return `m:${p.absRow}:${segKey}`;
+    return `m:${p.absRowStart}:${p.absRowEnd}:${segKey}`;
   }
   return `d:${p.absRowStart}:${p.absRowEnd}:${p.latex}`;
 }
@@ -351,20 +359,35 @@ function wrapperHtml(contentHtml: string, displayMode: boolean): string {
   const lineHeight = displayMode ? 1.6 : 1.4;
   // Inner wrapper uses absolute positioning to fill the decoration element.
   // `inset:0` → covers the whole decoration area → hides xterm text behind it.
+  // Display math stays centered single-line (KaTeX handles its own layout).
+  // Inline mixed rows use `pre-wrap` so long wrapped lines keep flowing.
+  const whiteSpace = displayMode ? "nowrap" : "pre-wrap";
+  const align = displayMode ? "center" : "flex-start";
   return (
     `<div style="position:absolute;inset:0;display:flex;` +
-    `align-items:center;justify-content:${justify};` +
+    `align-items:${align};justify-content:${justify};` +
     `background:${MATH_BG};color:${MATH_FG};` +
     `font-family:${MONO_FONT};` +
     `font-size:${fontSize}px;line-height:${lineHeight};` +
-    `overflow:visible;white-space:nowrap;` +
+    `overflow:hidden;white-space:${whiteSpace};` +
+    `padding:0 4px;box-sizing:border-box;` +
     `pointer-events:none;">${contentHtml}</div>`
   );
 }
 
+// ── Restore backslashes that CLIs (e.g. ChatGPT) strip when printing LaTeX ──
+// A lone `\` followed by a digit or minus sign inside a matrix is almost
+// certainly a stripped `\\` (bmatrix row separator before the next entry).
+// Restoring it lets KaTeX parse. Letters after `\` are real commands and `\|`
+// is the norm delimiter — both are left alone.
+function restoreLatex(s: string): string {
+  return s.replace(/\\(?=[\d\-])/g, "\\\\");
+}
+
 function renderMathHtml(latex: string, displayMode: boolean): string {
+  const fixed = restoreLatex(latex);
   try {
-    return katex.renderToString(latex, {
+    return katex.renderToString(fixed, {
       displayMode,
       throwOnError: false,
       strict: false,
@@ -419,22 +442,12 @@ function reconcileDecorations(
     }
     const rendered = wrapperHtml(contentHtml, displayMode);
 
-    // Pick the absolute row, x offset, width, height for the decoration
-    let absRow: number;
-    let x: number;
-    let width: number;
-    let height: number;
-    if (p.kind === "mixedRow") {
-      absRow = p.absRow;
-      x = 0;
-      width = cols;
-      height = 1; // overflow:visible lets math spill out if taller than 1 cell
-    } else {
-      absRow = p.absRowStart;
-      x = 0;
-      width = cols;
-      height = p.absRowEnd - p.absRowStart + 1;
-    }
+    // Pick the absolute row, x offset, width, height for the decoration.
+    // Both kinds may span multiple wrapped rows — height is the row count.
+    const absRow = p.absRowStart;
+    const x = 0;
+    const width = cols;
+    const height = Math.max(p.absRowEnd - p.absRowStart + 1, 1);
 
     // Create a marker at the absolute buffer row (bypass public registerMarker
     // which only marks cursor offset).
