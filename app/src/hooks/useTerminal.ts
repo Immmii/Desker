@@ -353,6 +353,10 @@ export function useTerminal(
     if (!container || !fitRef.current) return;
 
     const ro = new ResizeObserver(() => {
+      // Skip fit when the container is hidden (display:none on an ancestor →
+      // clientWidth becomes 0). Running fit() in that state collapses the
+      // terminal to 0 cols and it doesn't recover when visibility returns.
+      if (!container.clientWidth || container.clientWidth < 100) return;
       try {
         fitRef.current?.fit();
         const term = terminalInstances.get(sessionId);
