@@ -66,6 +66,23 @@ interface InlineMatch {
 function findInlineMatches(text: string): InlineMatch[] {
   const out: InlineMatch[] = [];
 
+  // \begin{env}...\end{env} — environment block (matrix, equation, etc.)
+  // Matched first so it has priority in the later dedupe step. `\w+` is the
+  // env name and we use a back-reference to require the same closing tag.
+  const envRe = /\\begin\{(\w+)\}[\s\S]*?\\end\{\1\}/g;
+  let em: RegExpExecArray | null;
+  while ((em = envRe.exec(text)) !== null) {
+    out.push({ start: em.index, end: em.index + em[0].length, latex: em[0] });
+  }
+
+  // $$...$$ — display-mode math; we still include it as an inline match so
+  // it becomes a segment within a mixedRow if mixed with prose.
+  const ddRe = /\$\$([\s\S]+?)\$\$/g;
+  let ddm: RegExpExecArray | null;
+  while ((ddm = ddRe.exec(text)) !== null) {
+    out.push({ start: ddm.index, end: ddm.index + ddm[0].length, latex: ddm[1].trim() });
+  }
+
   const dollarRe = /(?<!\$)\$([^\s$][^$]*?[^\s$]|[^\s$])\$(?!\$)/g;
   let dm: RegExpExecArray | null;
   while ((dm = dollarRe.exec(text)) !== null) {
@@ -183,9 +200,13 @@ function scanBuffer(term: Terminal): Placement[] {
     const current = logicalLines[i];
     const { text, absRowStart, absRowEnd } = current;
 
-    // 1) \begin{...}...\end{...} — may span multiple logical lines
+    // 1) \begin{...}...\end{...} — only fire when the closing tag is on a
+    //    LATER logical line (true multi-line display block). Same-line cases
+    //    fall through to detection #4, which handles them as mixedRow
+    //    segments so surrounding prose text is preserved.
     const beginMatch = text.match(/\\begin\{(\w+)\}/);
-    if (beginMatch) {
+    const sameLineEnd = beginMatch ? text.includes(`\\end{${beginMatch[1]}}`) : false;
+    if (beginMatch && !sameLineEnd) {
       const endTag = `\\end{${beginMatch[1]}}`;
       let endIdx = i;
       for (let j = i; j < logicalLines.length; j++) {
@@ -262,13 +283,15 @@ function scanBuffer(term: Terminal): Placement[] {
       }
     }
 
-    // 3) $$...$$  — now that we have logical lines, usually on one line
-    if (text.includes("$$")) {
-      const startIdx = i;
-      let endIdx = i;
-      const combined = [text];
-      const count = (text.match(/\$\$/g) || []).length;
-      if (count === 1) {
+    // 3) $$...$$ — only fire when the `$$` opens on this logical line and
+    //    closes on a LATER logical line (cross-line display block).
+    //    Same-line `$$...$$` falls through to #4 (mixedRow with inline
+    //    match) so surrounding prose text is preserved.
+    {
+      const ddCount = (text.match(/\$\$/g) || []).length;
+      if (ddCount === 1) {
+        let endIdx = i;
+        const combined = [text];
         for (let j = i + 1; j < logicalLines.length; j++) {
           combined.push(logicalLines[j].text);
           if (logicalLines[j].text.includes("$$")) {
@@ -276,27 +299,40 @@ function scanBuffer(term: Terminal): Placement[] {
             break;
           }
         }
+        const full = combined.join("\n");
+        const dd = full.match(/\$\$([\s\S]+?)\$\$/);
+        if (dd && endIdx > i) {
+          placements.push({
+            kind: "display",
+            absRowStart,
+            absRowEnd: logicalLines[endIdx].absRowEnd,
+            latex: dd[1].trim(),
+          });
+          i = endIdx + 1;
+          continue;
+        }
       }
-      const full = combined.join("\n");
-      const dd = full.match(/\$\$([\s\S]+?)\$\$/);
-      if (dd) {
-        placements.push({
-          kind: "display",
-          absRowStart,
-          absRowEnd: logicalLines[endIdx].absRowEnd,
-          latex: dd[1].trim(),
-        });
-        i = endIdx + 1;
-        continue;
-      }
-      // Fall through — maybe a lone $$ not forming a block
-      void startIdx;
     }
 
-    // 4) Inline $...$ / \(...\) mixed with text — replace the whole logical
-    //    line (all its wrapped visible rows) with one decoration.
+    // 4) Inline $...$ / \(...\) / \begin{}...\end{} / $$...$$ — any math
+    //    within the logical line. If the entire (trimmed) line is a single
+    //    math match, promote it to a display block. Otherwise mixedRow.
     const matches = findInlineMatches(text);
     if (matches.length > 0) {
+      const trimmed = text.trim();
+      if (matches.length === 1) {
+        const m = matches[0];
+        if (text.slice(m.start, m.end).trim() === trimmed) {
+          placements.push({
+            kind: "display",
+            absRowStart,
+            absRowEnd,
+            latex: m.latex,
+          });
+          i++;
+          continue;
+        }
+      }
       placements.push({
         kind: "mixedRow",
         absRowStart,
