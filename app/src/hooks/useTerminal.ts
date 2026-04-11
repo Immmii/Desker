@@ -47,7 +47,7 @@ const TERMINAL_THEME_LIGHT = {
   brightRed: "#e17055",
   brightGreen: "#00b894",
   brightYellow: "#fdcb6e",
-  brightBlue: "#74b9ff",
+  brightBlue: "#4c8df1",
   brightMagenta: "#a29bfe",
   brightCyan: "#55efc4",
   brightWhite: "#aaaaaa",
